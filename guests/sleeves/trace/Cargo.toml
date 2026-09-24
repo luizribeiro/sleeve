@@ -1,0 +1,17 @@
+[package]
+name = "trace-sleeve"
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sleeve-core = { path = "../../../crates/sleeve-core" }
+sleeve-policy-trace = { path = "../../../crates/sleeve-policy-trace" }
+wit-bindgen.workspace = true
+
+[lints]
+workspace = true

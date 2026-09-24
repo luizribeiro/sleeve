@@ -186,6 +186,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sleeve-policy-trace"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+]
+
+[[package]]
 name = "smoke"
 version = "0.0.0"
 dependencies = [
@@ -207,6 +214,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "trace-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "sleeve-policy-trace",
+ "wit-bindgen",
 ]
 
 [[package]]
