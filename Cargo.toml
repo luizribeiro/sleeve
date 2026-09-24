@@ -12,6 +12,10 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+spin = { version = "0.10", default-features = false, features = [
+  "mutex",
+  "spin_mutex",
+] }
 wasmtime = { version = "49", default-features = false, features = [
   "component-model",
   "component-model-async",

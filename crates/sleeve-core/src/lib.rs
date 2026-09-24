@@ -10,6 +10,7 @@ mod chain;
 mod event;
 mod handles;
 mod policy;
+mod sleeve;
 
 pub use chain::{ActiveCall, Chain, Start};
 pub use event::{
@@ -19,3 +20,4 @@ pub use event::{
 };
 pub use handles::HandleTable;
 pub use policy::{Decision, Denied, Metadata, Policy, Trap};
+pub use sleeve::{DispatchError, Sleeve};
