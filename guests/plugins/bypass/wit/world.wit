@@ -1,0 +1,10 @@
+package example:bypass@0.1.0;
+
+interface notes {
+  read: async func(name: string) -> string;
+}
+
+world plugin {
+  import notes;
+  export run: async func() -> string;
+}

@@ -1,0 +1,15 @@
+[package]
+name = "bypass"
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen.workspace = true
+
+[lints]
+workspace = true

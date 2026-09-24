@@ -1,0 +1,10 @@
+package example:direct-import@0.1.0;
+
+interface secrets {
+  reveal: async func() -> string;
+}
+
+world plugin {
+  import secrets;
+  export run: async func() -> string;
+}

@@ -1,0 +1,5 @@
+package example:platform-export@0.1.0;
+
+world plugin {
+  export sleeve:platform/lifecycle@0.1.0;
+}

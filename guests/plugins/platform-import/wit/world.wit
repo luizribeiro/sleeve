@@ -1,0 +1,6 @@
+package example:platform-import@0.1.0;
+
+world plugin {
+  import sleeve:platform/lifecycle@0.1.0;
+  export run: func() -> string;
+}
