@@ -1,5 +1,7 @@
 //! Minimal asynchronous component used to verify the guest toolchain.
 
+#![deny(unsafe_code)]
+
 #[allow(unsafe_code, missing_docs, clippy::same_length_and_capacity)]
 mod bindings {
     wit_bindgen::generate!({

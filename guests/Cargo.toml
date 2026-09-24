@@ -12,8 +12,11 @@ publish = false
 wit-bindgen = { version = "0.62", features = ["async"] }
 
 [workspace.lints.rust]
-unsafe_code = "warn"
+unsafe_code = "deny"
 missing_docs = "warn"
 
 [workspace.lints.clippy]
 pedantic = "warn"
+
+[profile.release]
+panic = "abort"
