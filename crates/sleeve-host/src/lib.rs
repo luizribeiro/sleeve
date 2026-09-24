@@ -1,11 +1,13 @@
-//! Compose and verify a policy sleeve in front of a component plugin.
+//! Compose, verify, and run a policy sleeve in front of a component plugin.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 mod composition;
+mod runtime;
 
 pub use composition::{LoadError, compose, sleeve_sha256, verify_composed_routing};
+pub use runtime::{Host, InvocationAttempt, InvocationResult};
 
 #[cfg(test)]
 mod tests {
@@ -142,6 +144,128 @@ mod tests {
             )
             .unwrap_err(),
             LoadError::ForwardedImport("example:notes/notes@0.1.0".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn host_refuses_sleeves_other_than_the_approved_bytes() {
+        let trace = std::fs::read(guest_build::trace_sleeve()).unwrap();
+        let passthrough = std::fs::read(guest_build::passthrough_sleeve()).unwrap();
+        let plugin = std::fs::read(guest_build::note_summary()).unwrap();
+        let host = Host::new([], sleeve_sha256(&trace)).unwrap();
+
+        let error = host
+            .summarize(&plugin, &passthrough, "wrong", "first", "second")
+            .await
+            .unwrap_err();
+        assert_eq!(error.downcast_ref(), Some(&LoadError::HashMismatch));
+
+        let mut mutated = trace;
+        let last = mutated.len() - 1;
+        mutated[last] ^= 1;
+        let error = host
+            .summarize(&plugin, &mutated, "mutated", "first", "second")
+            .await
+            .unwrap_err();
+        assert_eq!(error.downcast_ref(), Some(&LoadError::HashMismatch));
+    }
+
+    #[tokio::test]
+    async fn runs_a_summary_through_the_trace_sleeve() {
+        let sleeve = std::fs::read(guest_build::trace_sleeve()).unwrap();
+        let host = Host::new(
+            [
+                ("first".into(), "Bring tea".into()),
+                ("second".into(), "Book the room".into()),
+            ],
+            sleeve_sha256(&sleeve),
+        )
+        .unwrap();
+        let plugin = std::fs::read(guest_build::note_summary()).unwrap();
+        let result = host
+            .summarize(&plugin, &sleeve, "daily", "first", "second")
+            .await
+            .unwrap();
+
+        assert_eq!(result.value, "Bring tea; Book the room");
+        assert_eq!(
+            result.audit,
+            [
+                "invocation start daily",
+                "call 1 example:notes/notes@0.1.0.read name=first",
+                "return 1 ok",
+                "call 2 example:notes/notes@0.1.0.read name=second",
+                "return 2 ok",
+                "invocation end daily returned",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn preserves_audit_records_emitted_before_a_plugin_trap() {
+        let sleeve = std::fs::read(guest_build::trace_sleeve()).unwrap();
+        let host = Host::new(
+            [("first".into(), "classified".into())],
+            sleeve_sha256(&sleeve),
+        )
+        .unwrap();
+        let plugin = std::fs::read(guest_build::trap_after_read()).unwrap();
+        let attempt = host
+            .summarize_with_audit(&plugin, &sleeve, "trap", "first", "unused")
+            .await
+            .unwrap();
+
+        assert!(attempt.value.is_err());
+        assert_eq!(
+            attempt.audit,
+            [
+                "invocation start trap",
+                "call 1 example:notes/notes@0.1.0.read name=first",
+                "return 1 ok",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn policy_state_spans_calls_but_not_invocations() {
+        let sleeve = std::fs::read(guest_build::counting_sleeve()).unwrap();
+        let host = Host::new(
+            [
+                ("first".into(), "one".into()),
+                ("second".into(), "two".into()),
+            ],
+            sleeve_sha256(&sleeve),
+        )
+        .unwrap();
+        let plugin = std::fs::read(guest_build::note_summary()).unwrap();
+
+        for invocation in ["first-run", "second-run"] {
+            let result = host
+                .summarize(&plugin, &sleeve, invocation, "first", "second")
+                .await
+                .unwrap();
+            assert_eq!(result.audit, ["count 1", "count 2"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn denial_traps_after_outer_policies_observe_it() {
+        let sleeve = std::fs::read(guest_build::deny_sleeve()).unwrap();
+        let host = Host::new([], sleeve_sha256(&sleeve)).unwrap();
+        let plugin = std::fs::read(guest_build::note_summary()).unwrap();
+        let attempt = host
+            .summarize_with_audit(&plugin, &sleeve, "denied", "first", "second")
+            .await
+            .unwrap();
+
+        assert!(attempt.value.is_err());
+        assert_eq!(
+            attempt.audit,
+            [
+                "invocation start denied",
+                "call 1 example:notes/notes@0.1.0.read name=first",
+                "return 1 denied",
+            ]
         );
     }
 }

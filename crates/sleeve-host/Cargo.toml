@@ -8,13 +8,15 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+anyhow.workspace = true
 sha2.workspace = true
 wac-graph.workspace = true
 wasmparser.workspace = true
-wasmtime.workspace = true
+wasmtime = { workspace = true, features = ["cranelift"] }
 
 [dev-dependencies]
 guest-build = { path = "../../support/guest-build" }
+tokio.workspace = true
 
 [lints]
 workspace = true

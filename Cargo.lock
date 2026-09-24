@@ -1147,8 +1147,10 @@ dependencies = [
 name = "sleeve-host"
 version = "0.0.0"
 dependencies = [
+ "anyhow",
  "guest-build",
  "sha2",
+ "tokio",
  "wac-graph",
  "wasmparser",
  "wasmtime",

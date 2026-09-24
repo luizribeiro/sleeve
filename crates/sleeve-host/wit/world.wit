@@ -1,0 +1,8 @@
+package sleeve:host@0.1.0;
+
+world composed {
+  import example:notes/notes@0.1.0;
+  import sleeve:platform/audit@0.1.0;
+  export sleeve:platform/lifecycle@0.1.0;
+  export summarize: async func(first: string, second: string) -> string;
+}
