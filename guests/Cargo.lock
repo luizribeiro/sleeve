@@ -30,6 +30,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "deny-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "sleeve-policy-trace",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "direct-import"
 version = "0.0.0"
 dependencies = [

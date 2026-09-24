@@ -1,0 +1,8 @@
+package sleeve:deny@0.1.0;
+
+world sleeve {
+  import example:notes/notes@0.1.0;
+  import sleeve:platform/audit@0.1.0;
+  export example:notes/notes@0.1.0;
+  export sleeve:platform/lifecycle@0.1.0;
+}
