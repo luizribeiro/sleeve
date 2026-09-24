@@ -1,0 +1,10 @@
+package sleeve:platform@0.1.0;
+
+interface audit {
+  log: func(event: string);
+}
+
+interface lifecycle {
+  start: func(invocation: string);
+  end: func(invocation: string, trapped: bool);
+}
