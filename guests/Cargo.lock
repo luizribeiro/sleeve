@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "counting-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "direct-import"
 version = "0.0.0"
 dependencies = [
