@@ -95,6 +95,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
+name = "passthrough-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -171,11 +179,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "sleeve-core"
+version = "0.0.0"
+dependencies = [
+ "spin",
+]
+
+[[package]]
 name = "smoke"
 version = "0.0.0"
 dependencies = [
  "wit-bindgen",
 ]
+
+[[package]]
+name = "spin"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
 
 [[package]]
 name = "syn"
