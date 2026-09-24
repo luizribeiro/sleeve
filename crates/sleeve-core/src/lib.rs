@@ -7,6 +7,7 @@
 extern crate alloc;
 
 mod event;
+mod handles;
 mod policy;
 
 pub use event::{
@@ -14,4 +15,5 @@ pub use event::{
     InvocationEnded, InvocationOutcome, InvocationStarted, ProducedHandle, Provenance,
     ReturnStatus, Returned,
 };
+pub use handles::HandleTable;
 pub use policy::{Decision, Denied, Metadata, Policy, Trap};
