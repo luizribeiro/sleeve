@@ -8,7 +8,13 @@ rust-version.workspace = true
 version.workspace = true
 
 [dependencies]
+sha2.workspace = true
+wac-graph.workspace = true
+wasmparser.workspace = true
 wasmtime.workspace = true
+
+[dev-dependencies]
+guest-build = { path = "../../support/guest-build" }
 
 [lints]
 workspace = true

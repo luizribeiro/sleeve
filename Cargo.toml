@@ -12,10 +12,13 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+sha2 = "0.10"
 spin = { version = "0.10", default-features = false, features = [
   "mutex",
   "spin_mutex",
 ] }
+wac-graph = "0.11"
+wasmparser = "0.258"
 wasmtime = { version = "49", default-features = false, features = [
   "component-model",
   "component-model-async",
