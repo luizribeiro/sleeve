@@ -1,14 +1,11 @@
 [package]
-name = "sleeve-policy-trace"
+name = "sleeve-policy-ifc-stub"
 publish.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
-
-[dependencies]
-sleeve-core = { path = "../sleeve-core" }
 
 [lints]
 workspace = true

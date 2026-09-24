@@ -10,7 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 sleeve-core = { path = "../../../crates/sleeve-core" }
-sleeve-policy-trace = { path = "../../../crates/sleeve-policy-trace" }
+sleeve-policy-trace = { path = "../../../support/policies/trace" }
 wit-bindgen.workspace = true
 
 [lints]
