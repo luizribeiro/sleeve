@@ -6,7 +6,20 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const GUESTS: &[(&str, &str)] = &[("SMOKE_COMPONENT", "smoke")];
+const GUESTS: &[(&str, &str)] = &[
+    ("BYPASS_COMPONENT", "bypass"),
+    ("COUNTING_SLEEVE_COMPONENT", "counting-sleeve"),
+    ("DENY_SLEEVE_COMPONENT", "deny-sleeve"),
+    ("DIRECT_IMPORT_COMPONENT", "direct-import"),
+    ("NOTE_SUMMARY_COMPONENT", "note-summary"),
+    ("PASSTHROUGH_SLEEVE_COMPONENT", "passthrough-sleeve"),
+    ("PLATFORM_EXPORT_COMPONENT", "platform-export"),
+    ("PLATFORM_IMPORT_COMPONENT", "platform-import"),
+    ("READ_MANY_COMPONENT", "read-many"),
+    ("SMOKE_COMPONENT", "smoke"),
+    ("TRACE_SLEEVE_COMPONENT", "trace-sleeve"),
+    ("TRAP_AFTER_READ_COMPONENT", "trap-after-read"),
+];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let crate_dir = PathBuf::from(required_var("CARGO_MANIFEST_DIR")?);
@@ -20,16 +33,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guest_target_dir = main_target_dir.join("guest-build");
 
     build_guest_workspace(&guest_dir.join("Cargo.toml"), &guest_target_dir)?;
+    let wasip2_target_dir = guest_target_dir.join("wasip2-experiment");
+    build_wasip2_experiments(&guest_dir.join("Cargo.toml"), &wasip2_target_dir)?;
 
-    let release_dir = guest_target_dir.join("wasm32-wasip2/release");
+    let release_dir = guest_target_dir.join("wasm32-unknown-unknown/release");
+    let component_dir = guest_target_dir.join("components");
+    std::fs::create_dir_all(&component_dir)?;
     for &(variable, package) in GUESTS {
-        emit_guest_path(variable, package, &release_dir);
+        let module = release_dir.join(package.replace('-', "_") + ".wasm");
+        let component = component_dir.join(package.to_owned() + ".wasm");
+        componentize(&module, &component)?;
+        emit_guest_path(variable, &component);
     }
+    emit_guest_path(
+        "WASIP2_NOTE_SUMMARY_COMPONENT",
+        &wasip2_target_dir.join("wasm32-wasip2/release/note_summary.wasm"),
+    );
+    emit_guest_path(
+        "WASIP2_PASSTHROUGH_SLEEVE_COMPONENT",
+        &wasip2_target_dir.join("wasm32-wasip2/release/passthrough_sleeve.wasm"),
+    );
     println!("cargo::rerun-if-changed={}", guest_dir.display());
     Ok(())
 }
 
-fn build_guest_workspace(manifest: &Path, target_dir: &Path) -> io::Result<()> {
+fn build_wasip2_experiments(manifest: &Path, target_dir: &Path) -> io::Result<()> {
     let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let mut command = Command::new(cargo);
     command.args([
@@ -42,12 +70,36 @@ fn build_guest_workspace(manifest: &Path, target_dir: &Path) -> io::Result<()> {
         OsStr::new("--target-dir"),
         target_dir.as_os_str(),
         OsStr::new("--locked"),
+        OsStr::new("-p"),
+        OsStr::new("note-summary"),
+        OsStr::new("-p"),
+        OsStr::new("passthrough-sleeve"),
     ]);
-    for (key, _) in env::vars_os() {
-        if key.to_string_lossy().starts_with("CARGO_") || key == "RUSTFLAGS" {
-            command.env_remove(key);
-        }
+    clear_cargo_environment(&mut command);
+    let status = command.status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "wasip2 experiment build failed with {status}"
+        )));
     }
+    Ok(())
+}
+
+fn build_guest_workspace(manifest: &Path, target_dir: &Path) -> io::Result<()> {
+    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let mut command = Command::new(cargo);
+    command.args([
+        OsStr::new("build"),
+        OsStr::new("--release"),
+        OsStr::new("--target"),
+        OsStr::new("wasm32-unknown-unknown"),
+        OsStr::new("--manifest-path"),
+        manifest.as_os_str(),
+        OsStr::new("--target-dir"),
+        target_dir.as_os_str(),
+        OsStr::new("--locked"),
+    ]);
+    clear_cargo_environment(&mut command);
 
     let status = command.status()?;
     if !status.success() {
@@ -58,14 +110,33 @@ fn build_guest_workspace(manifest: &Path, target_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
+fn clear_cargo_environment(command: &mut Command) {
+    for (key, _) in env::vars_os() {
+        if key.to_string_lossy().starts_with("CARGO_") || key == "RUSTFLAGS" {
+            command.env_remove(key);
+        }
+    }
+}
+
 fn required_var(name: &str) -> io::Result<std::ffi::OsString> {
     env::var_os(name).ok_or_else(|| io::Error::other(format!("{name} is not set")))
 }
 
-fn emit_guest_path(variable: &str, package: &str, release_dir: &Path) {
-    let artifact = package.replace('-', "_") + ".wasm";
-    println!(
-        "cargo::rustc-env={variable}={}",
-        release_dir.join(artifact).display()
-    );
+fn componentize(module: &Path, component: &Path) -> io::Result<()> {
+    let status = Command::new("wasm-tools")
+        .args([OsStr::new("component"), OsStr::new("new")])
+        .arg(module)
+        .arg("-o")
+        .arg(component)
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!(
+            "component creation failed with {status}"
+        )));
+    }
+    Ok(())
+}
+
+fn emit_guest_path(variable: &str, component: &Path) {
+    println!("cargo::rustc-env={variable}={}", component.display());
 }
