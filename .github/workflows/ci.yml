@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-nix
+      - name: Check flake
+        run: nix flake check
+      - name: Run pre-commit hooks
+        run: nix develop -c pre-commit run --all-files --show-diff-on-failure
+      - name: Run pre-push hooks
+        run: nix develop -c pre-commit run --all-files --hook-stage pre-push --show-diff-on-failure
+      - name: Check dependency advisories
+        run: nix develop -c cargo deny check advisories
