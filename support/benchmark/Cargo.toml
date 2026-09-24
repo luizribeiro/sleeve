@@ -1,0 +1,19 @@
+[package]
+name = "sleeve-benchmark"
+publish.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+guest-build = { path = "../guest-build" }
+sleeve-host = { path = "../../crates/sleeve-host" }
+tokio.workspace = true
+wasm-component-middleware = { git = "https://github.com/luizribeiro/wasm-component-middleware", rev = "127f0715d259a794039ab18e73b95d0212973314" }
+wasmtime = { workspace = true, features = ["cranelift"] }
+
+[lints]
+workspace = true
