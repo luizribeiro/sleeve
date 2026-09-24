@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = ["plugins/*"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+version = "0.0.0"
+publish = false
+
+[workspace.dependencies]
+wit-bindgen = { version = "0.62", features = ["async"] }
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = "warn"

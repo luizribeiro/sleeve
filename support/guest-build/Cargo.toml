@@ -7,5 +7,10 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+wasmtime = { workspace = true, features = ["cranelift"] }
+wasmtime-wasi.workspace = true
+
 [lints]
 workspace = true

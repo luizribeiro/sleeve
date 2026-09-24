@@ -1,0 +1,9 @@
+package sleeve:smoke;
+
+interface greeter {
+  greet: async func(name: string) -> string;
+}
+
+world smoke {
+  export greeter;
+}
