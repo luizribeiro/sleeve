@@ -1,0 +1,6 @@
+package example:trap-after-read@0.1.0;
+
+world plugin {
+  import example:notes/notes@0.1.0;
+  export summarize: async func(first: string, second: string) -> string;
+}
