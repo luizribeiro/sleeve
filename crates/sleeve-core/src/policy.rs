@@ -64,7 +64,6 @@ pub enum Decision<F = ()> {
 }
 
 /// Opaque metadata to attach to a produced handle.
-#[allow(dead_code)]
 pub struct Metadata {
     pub(crate) handle: u64,
     pub(crate) value: Box<dyn Any + Send>,

@@ -1,4 +1,4 @@
-//! Policy-neutral events for a composed sleeve.
+//! Policy-neutral events and policy dispatch for a composed sleeve.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -6,10 +6,12 @@
 
 extern crate alloc;
 
+mod chain;
 mod event;
 mod handles;
 mod policy;
 
+pub use chain::{ActiveCall, Chain, Start};
 pub use event::{
     Call, ChannelClosed, ChannelKind, ChannelOpened, Designator, Event, HandleDropped,
     InvocationEnded, InvocationOutcome, InvocationStarted, ProducedHandle, Provenance,

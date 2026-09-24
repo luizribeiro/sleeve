@@ -53,7 +53,6 @@ impl HandleTable {
             .downcast_ref()
     }
 
-    #[allow(dead_code)]
     pub(crate) fn attach(&mut self, metadata: Metadata) {
         if let Some(entry) = self
             .entries
