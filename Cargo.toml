@@ -1,0 +1,27 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "support/guest-build"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/luizribeiro/sleeve"
+version = "0.0.0"
+publish = false
+
+[workspace.dependencies]
+anyhow = "1"
+wasmtime = { version = "49", default-features = false, features = [
+  "component-model",
+  "component-model-async",
+  "runtime",
+] }
+wasmtime-wasi = "49"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+pedantic = "warn"
