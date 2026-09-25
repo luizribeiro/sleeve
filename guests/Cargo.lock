@@ -365,6 +365,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "trace-ifc-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "sleeve-policy-ifc-stub",
+ "sleeve-policy-trace",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "trace-sleeve"
 version = "0.0.0"
 dependencies = [

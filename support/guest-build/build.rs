@@ -19,6 +19,7 @@ const GUESTS: &[(&str, &str)] = &[
     ("SMOKE_COMPONENT", "smoke"),
     ("TRACE_SLEEVE_COMPONENT", "trace-sleeve"),
     ("IFC_SLEEVE_COMPONENT", "ifc-sleeve"),
+    ("TRACE_IFC_SLEEVE_COMPONENT", "trace-ifc-sleeve"),
     ("TRAP_AFTER_READ_COMPONENT", "trap-after-read"),
 ];
 

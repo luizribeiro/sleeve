@@ -1,0 +1,18 @@
+[package]
+name = "trace-ifc-sleeve"
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sleeve-core = { path = "../../../crates/sleeve-core" }
+sleeve-policy-ifc-stub = { path = "../../../support/policies/ifc-stub" }
+sleeve-policy-trace = { path = "../../../support/policies/trace" }
+wit-bindgen = { workspace = true, features = ["async-spawn"] }
+
+[lints]
+workspace = true
