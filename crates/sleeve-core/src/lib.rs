@@ -8,6 +8,7 @@ extern crate alloc;
 
 mod chain;
 mod event;
+pub mod filesystem;
 mod handles;
 pub mod http;
 mod http_wrapper;
