@@ -6,6 +6,7 @@ interface audit {
 
 interface settings {
   request-body-limit: func() -> u64;
+  allowed-origins: func() -> list<string>;
 }
 
 interface lifecycle {

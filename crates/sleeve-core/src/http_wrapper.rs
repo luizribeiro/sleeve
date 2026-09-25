@@ -323,6 +323,28 @@ macro_rules! export_http_sleeve {
             $bindings::wasi::http::client::send(request).await
         }
 
+        impl $bindings::exports::example::notes::notes::Guest for Component {
+            async fn read(name: ::alloc::string::String) -> ::alloc::string::String {
+                dispatch_or_trap(
+                    SLEEVE
+                        .dispatch(
+                            "example:notes/notes@0.1.0",
+                            "read",
+                            ::alloc::vec![$crate::Designator::new("name", name.as_str())],
+                            $bindings::example::notes::notes::read(name.clone()),
+                        )
+                        .await,
+                )
+            }
+        }
+
+        impl $bindings::exports::wasi::http::types::Guest for Component {
+            type Fields = WrappedFields;
+            type RequestOptions = WrappedOptions;
+            type Request = WrappedRequest;
+            type Response = WrappedResponse;
+        }
+
         impl $bindings::exports::wasi::http::types::GuestFields for WrappedFields {
             fn new() -> Self {
                 let id = SLEEVE.next_handle();
@@ -532,5 +554,122 @@ macro_rules! export_http_sleeve {
             }
         }
 
+        impl $bindings::exports::wasi::http::types::GuestResponse for WrappedResponse {
+            fn get_status_code(&self) -> u16 {
+                dispatch_or_trap(SLEEVE.dispatch_sync(
+                    HTTP_TYPES,
+                    "[method]response.get-status-code",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![self.id],
+                    ::alloc::vec::Vec::new(),
+                    |_| self.inner().get_status_code(),
+                ))
+            }
+
+            fn consume_body(
+                response: ExportedResponse,
+                result: ::wit_bindgen::FutureReader<Result<(), ErrorCode>>,
+            ) -> (
+                ::wit_bindgen::StreamReader<u8>,
+                ::wit_bindgen::FutureReader<
+                    Result<::core::option::Option<ExportedFields>, ErrorCode>,
+                >,
+            ) {
+                let response = response.into_inner::<WrappedResponse>();
+                let response_id = response.id;
+                let response = response.take();
+                let stream_id = SLEEVE.next_handle();
+                let trailers_id = SLEEVE.next_handle();
+                dispatch_or_trap(SLEEVE.dispatch_sync(
+                    HTTP_TYPES,
+                    "[static]response.consume-body",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![response_id],
+                    ::alloc::vec![
+                        (stream_id, "stream<u8>"),
+                        (trailers_id, "future<wasi:http/response-trailers>"),
+                    ],
+                    |_| {
+                        let (result_writer, result_reader) =
+                            $bindings::wit_future::new(|| Ok(()));
+                        ::wit_bindgen::spawn_local(async move {
+                            let value = result.await;
+                            let _write = result_writer.write(value).await;
+                        });
+                        let (mut body, trailers) =
+                            ImportedResponse::consume_body(response, result_reader);
+                        let (mut body_writer, body_reader) = $bindings::wit_stream::new();
+                        let (trailers_writer, trailers_reader) =
+                            $bindings::wit_future::new(|| Ok(None));
+                        ::wit_bindgen::spawn_local(async move {
+                            while let Some(byte) = body.next().await {
+                                if body_writer.write_one(byte).await.is_some() {
+                                    break;
+                                }
+                            }
+                            drop(body_writer);
+                            observe_drop(stream_id);
+                            let trailers = trailers.await.map(|trailers| {
+                                trailers.map(|fields| {
+                                    let id = SLEEVE.next_handle();
+                                    dispatch_or_trap(SLEEVE.register_handle(
+                                        $crate::ProducedHandle::from_parent(
+                                            id,
+                                            "wasi:http/types.fields",
+                                            response_id,
+                                        ),
+                                    ));
+                                    ExportedFields::new(WrappedFields::new(id, fields))
+                                })
+                            });
+                            let _write = trailers_writer.write(trailers).await;
+                            observe_drop(trailers_id);
+                        });
+                        (body_reader, trailers_reader)
+                    },
+                ))
+            }
+        }
+
+        impl $bindings::exports::wasi::http::client::Guest for Component {
+            async fn send(request: ExportedRequest) -> Result<ExportedResponse, ErrorCode> {
+                let request_id = request.get::<WrappedRequest>().id;
+                let request = request.into_inner::<WrappedRequest>().take();
+                let origin = origin(&request)?;
+                let response_id = SLEEVE.next_handle();
+                let response = http_dispatch(
+                    SLEEVE
+                        .dispatch_result(
+                            HTTP_CLIENT,
+                            "send",
+                            ::alloc::vec![$crate::Designator::new("origin", origin)],
+                            ::alloc::vec![request_id],
+                            ::alloc::vec![(response_id, "wasi:http/types.response")],
+                            |_| forward_request(request),
+                        )
+                        .await,
+                )?;
+                Ok(ExportedResponse::new(WrappedResponse::new(
+                    response_id,
+                    response,
+                )))
+            }
+        }
+
+        impl $bindings::exports::sleeve::platform::lifecycle::Guest for Component {
+            fn start(invocation: ::alloc::string::String) {
+                dispatch_or_trap(SLEEVE.start($chain, invocation));
+            }
+
+            fn end(invocation: ::alloc::string::String, trapped: bool) {
+                dispatch_or_trap(SLEEVE.end(invocation, trapped));
+            }
+        }
+
+        #[allow(unsafe_code)]
+        mod component_export {
+            use super::{bindings, Component};
+            bindings::export!(Component with_types_in bindings);
+        }
     };
 }

@@ -18,6 +18,7 @@ const GUESTS: &[(&str, &str)] = &[
     ("READ_MANY_COMPONENT", "read-many"),
     ("SMOKE_COMPONENT", "smoke"),
     ("TRACE_SLEEVE_COMPONENT", "trace-sleeve"),
+    ("IFC_SLEEVE_COMPONENT", "ifc-sleeve"),
     ("TRAP_AFTER_READ_COMPONENT", "trap-after-read"),
 ];
 

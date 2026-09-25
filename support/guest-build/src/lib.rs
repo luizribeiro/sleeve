@@ -65,6 +65,12 @@ pub fn trace_sleeve() -> &'static Path {
     Path::new(env!("TRACE_SLEEVE_COMPONENT"))
 }
 
+/// Returns the path to the notes and HTTP sleeve with IFC enabled.
+#[must_use]
+pub fn ifc_sleeve() -> &'static Path {
+    Path::new(env!("IFC_SLEEVE_COMPONENT"))
+}
+
 /// Returns the path to the plugin that traps after reading a note.
 #[must_use]
 pub fn trap_after_read() -> &'static Path {

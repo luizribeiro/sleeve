@@ -10,6 +10,7 @@ mod chain;
 mod event;
 mod handles;
 pub mod http;
+mod http_wrapper;
 mod policy;
 mod sleeve;
 
