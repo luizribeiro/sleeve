@@ -4,6 +4,10 @@ interface audit {
   log: func(event: string);
 }
 
+interface settings {
+  request-body-limit: func() -> u64;
+}
+
 interface lifecycle {
   start: func(invocation: string);
   end: func(invocation: string, trapped: bool);
