@@ -154,18 +154,6 @@ macro_rules! export_http_sleeve {
             }
         }
 
-        fn http_dispatch(
-            result: Result<Result<ImportedResponse, ErrorCode>, $crate::DispatchError>,
-        ) -> Result<ImportedResponse, ErrorCode> {
-            match result {
-                Ok(result) => result,
-                Err(error) => match error.into_http_denial() {
-                    Ok(error) => Err(error),
-                    Err(error) => error.trap(),
-                },
-            }
-        }
-
         fn map_header_error(
             error: $bindings::wasi::http::types::HeaderError,
         ) -> $bindings::exports::wasi::http::types::HeaderError {
@@ -637,7 +625,7 @@ macro_rules! export_http_sleeve {
                 let request = request.into_inner::<WrappedRequest>().take();
                 let origin = origin(&request)?;
                 let response_id = SLEEVE.next_handle();
-                let response = http_dispatch(
+                let response = $crate::dispatch_domain(
                     SLEEVE
                         .dispatch_result(
                             HTTP_CLIENT,
@@ -648,6 +636,7 @@ macro_rules! export_http_sleeve {
                             |_| forward_request(request),
                         )
                         .await,
+                    ErrorCode::HttpRequestDenied,
                 )?;
                 Ok(ExportedResponse::new(WrappedResponse::new(
                     response_id,

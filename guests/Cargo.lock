@@ -52,6 +52,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "file-ifc-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "sleeve-policy-ifc-stub",
+ "spin",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "foldhash"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -392,6 +402,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "trace-file-ifc-sleeve"
+version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+ "sleeve-policy-ifc-stub",
+ "sleeve-policy-trace",
+ "spin",
+ "wit-bindgen",
 ]
 
 [[package]]

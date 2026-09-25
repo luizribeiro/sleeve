@@ -1,0 +1,11 @@
+package sleeve:file-ifc@0.1.0;
+
+world sleeve {
+  import wasi:filesystem/types@0.3.0;
+  import wasi:filesystem/preopens@0.3.0;
+  import sleeve:platform/settings@0.1.0;
+  export wasi:filesystem/types@0.3.0;
+  export wasi:filesystem/preopens@0.3.0;
+  export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
+}

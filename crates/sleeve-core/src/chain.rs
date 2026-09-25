@@ -359,6 +359,7 @@ mod tests {
             handle: 3,
             kind: ChannelKind::Stream,
             call_id: 1,
+            sink: None,
         };
         let Decision::Deny(error) = chain.before_state_change(&PolicyState::new(&[]), &opened)
         else {

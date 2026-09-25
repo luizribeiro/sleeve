@@ -150,6 +150,27 @@ impl Sleeve {
         Ok(value)
     }
 
+    /// Runs a synchronous operation whose produced handles are discovered by
+    /// the forwarding closure.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when the invocation is unavailable or policy
+    /// refuses the operation.
+    pub fn dispatch_sync_handles<T>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'_>>,
+        handles: Vec<u64>,
+        forward: impl FnOnce(u64) -> (T, Vec<crate::ProducedHandle>),
+    ) -> Result<T, DispatchError> {
+        let (call, active) = self.begin_call(interface, function, designators, handles)?;
+        let (value, produced) = forward(call.id);
+        self.finish_call_handles(&call, active, ReturnStatus::Ok, produced)?;
+        Ok(value)
+    }
+
     /// Runs a synchronous fallible operation through the policy chain.
     ///
     /// # Errors
@@ -211,6 +232,44 @@ impl Sleeve {
         Ok(result)
     }
 
+    /// Runs an asynchronous fallible operation that derives a returned handle
+    /// from an existing wrapped handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when the invocation is unavailable or policy
+    /// refuses the operation. The forwarded error remains inside the outer
+    /// result and is recorded as a normal error return.
+    pub async fn dispatch_result_derived<T, E, F>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'_>>,
+        handles: Vec<u64>,
+        produced: (u64, &'static str, u64),
+        forward: impl FnOnce(u64) -> F,
+    ) -> Result<Result<T, E>, DispatchError>
+    where
+        F: Future<Output = Result<T, E>>,
+        E: Debug,
+    {
+        let (call, active) = self.begin_call(interface, function, designators, handles)?;
+        let result = forward(call.id).await;
+        let status = match &result {
+            Ok(_) => ReturnStatus::Ok,
+            Err(error) => ReturnStatus::Error(alloc::format!("{error:?}")),
+        };
+        let returned = if result.is_ok() {
+            alloc::vec![crate::ProducedHandle::from_parent(
+                produced.0, produced.1, produced.2,
+            )]
+        } else {
+            Vec::new()
+        };
+        self.finish_call_handles(&call, active, status, returned)?;
+        Ok(result)
+    }
+
     fn begin_call<'a>(
         &self,
         interface: &'static str,
@@ -228,7 +287,7 @@ impl Sleeve {
         let active = {
             let mut guard = self.try_state()?;
             let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
-            let policy_state = PolicyState::new(&state.open_channels);
+            let policy_state = PolicyState::with_handles(&state.open_channels, &state.handles);
             match state.chain.start_call(&policy_state, &call) {
                 Start::Allowed(active) => active,
                 Start::Denied(denied) => return Err(DispatchError::Denied(denied)),
@@ -249,6 +308,16 @@ impl Sleeve {
             .into_iter()
             .map(|(id, resource_type)| crate::ProducedHandle::from_call(id, resource_type, call.id))
             .collect();
+        self.finish_call_handles(call, active, status, handles)
+    }
+
+    fn finish_call_handles(
+        &self,
+        call: &crate::Call<'_>,
+        active: crate::ActiveCall,
+        status: ReturnStatus,
+        handles: Vec<crate::ProducedHandle>,
+    ) -> Result<(), DispatchError> {
         let mut guard = self.try_state()?;
         let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
         state.chain.finish_call(
@@ -272,10 +341,41 @@ impl Sleeve {
         kind: ChannelKind,
         call_id: u64,
     ) -> Result<(), DispatchError> {
-        let opened = ChannelOpened::new(handle, kind, call_id);
+        self.open_channel_at(handle, kind, call_id, None)
+    }
+
+    /// Asks policies to approve a writable channel associated with a sink.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when no invocation has started or a policy
+    /// refuses the state transition.
+    pub fn open_channel_to(
+        &self,
+        handle: u64,
+        kind: ChannelKind,
+        call_id: u64,
+        sink: u64,
+    ) -> Result<(), DispatchError> {
+        self.open_channel_at(handle, kind, call_id, Some(sink))
+    }
+
+    fn open_channel_at(
+        &self,
+        handle: u64,
+        kind: ChannelKind,
+        call_id: u64,
+        sink: Option<u64>,
+    ) -> Result<(), DispatchError> {
+        let opened = ChannelOpened {
+            handle,
+            kind,
+            call_id,
+            sink,
+        };
         let mut guard = self.try_state()?;
         let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
-        let policy_state = PolicyState::new(&state.open_channels);
+        let policy_state = PolicyState::with_handles(&state.open_channels, &state.handles);
         match state.chain.before_state_change(&policy_state, &opened) {
             Decision::Allow(()) => {
                 state.open_channels.push(opened);
@@ -428,22 +528,19 @@ pub enum DispatchError {
     RelaysStopped,
 }
 
-impl DispatchError {
-    /// Maps a policy refusal at an HTTP boundary to `HTTP-request-denied`.
-    ///
-    /// Traps and lifecycle errors remain errors so the WIT wrapper can trap.
-    ///
-    /// # Errors
-    ///
-    /// Returns itself when the failure must trap rather than become a typed
-    /// HTTP refusal.
-    pub fn into_http_denial(self) -> Result<crate::http::ErrorCode, Self> {
-        match self {
-            Self::Denied(_) => Ok(crate::http::ErrorCode::HttpRequestDenied),
-            other => Err(other),
-        }
+impl core::fmt::Debug for DispatchError {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(match self {
+            Self::NotStarted => "NotStarted",
+            Self::Denied(_) => "Denied",
+            Self::Trap(_) => "Trap",
+            Self::StateBorrowed => "StateBorrowed",
+            Self::RelaysStopped => "RelaysStopped",
+        })
     }
+}
 
+impl DispatchError {
     /// Traps the current WebAssembly component call.
     #[cfg(target_arch = "wasm32")]
     pub fn trap(self) -> ! {

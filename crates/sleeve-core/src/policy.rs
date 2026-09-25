@@ -6,19 +6,39 @@ use crate::{Call, ChannelOpened, Event, Returned};
 /// Read-only invocation state available while a policy makes a decision.
 pub struct PolicyState<'a> {
     open_channels: &'a [ChannelOpened],
+    handles: Option<&'a crate::HandleTable>,
 }
 
 impl<'a> PolicyState<'a> {
     /// Creates a view over the core's current open-channel set.
     #[must_use]
     pub const fn new(open_channels: &'a [ChannelOpened]) -> Self {
-        Self { open_channels }
+        Self {
+            open_channels,
+            handles: None,
+        }
+    }
+
+    pub(crate) const fn with_handles(
+        open_channels: &'a [ChannelOpened],
+        handles: &'a crate::HandleTable,
+    ) -> Self {
+        Self {
+            open_channels,
+            handles: Some(handles),
+        }
     }
 
     /// Iterates over writable channels that can still carry later writes.
     #[must_use]
     pub fn open_channels(&self) -> impl ExactSizeIterator<Item = &ChannelOpened> {
         self.open_channels.iter()
+    }
+
+    /// Returns policy-private metadata attached to a wrapped handle.
+    #[must_use]
+    pub fn metadata<T: Any + Send>(&self, handle: u64) -> Option<&T> {
+        self.handles?.metadata(handle)
     }
 }
 

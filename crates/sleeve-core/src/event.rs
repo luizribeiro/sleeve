@@ -176,6 +176,8 @@ pub struct ChannelOpened {
     pub kind: ChannelKind,
     /// Call that produced the channel.
     pub call_id: u64,
+    /// Resource whose endpoint receives later writes, when one exists.
+    pub sink: Option<u64>,
 }
 
 impl ChannelOpened {
@@ -186,6 +188,7 @@ impl ChannelOpened {
             handle,
             kind,
             call_id,
+            sink: None,
         }
     }
 }
