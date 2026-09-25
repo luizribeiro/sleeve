@@ -7,6 +7,7 @@ interface audit {
 interface settings {
   request-body-limit: func() -> u64;
   allowed-origins: func() -> list<string>;
+  preopen-label: func(name: string) -> string;
 }
 
 interface lifecycle {

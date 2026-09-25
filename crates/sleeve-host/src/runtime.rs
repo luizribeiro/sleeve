@@ -161,6 +161,10 @@ impl http_bindings::sleeve::platform::settings::Host for StateView<'_> {
     fn allowed_origins(&mut self) -> wasmtime::Result<Vec<String>> {
         Ok(self.0.allowed_origins.clone())
     }
+
+    fn preopen_label(&mut self, _: String) -> wasmtime::Result<String> {
+        Ok(String::new())
+    }
 }
 
 impl WasiHttpView for State {
