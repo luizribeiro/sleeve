@@ -4,9 +4,16 @@ set -euo pipefail
 repository=$(cd "$(dirname "$0")/.." && pwd)
 sleeve="$repository/crates/sleeve-core/src/http_wrapper.rs"
 middleware=${1:-"$repository/../wasm-component-middleware/crates/wasm-component-middleware-wasi-http/src/p3.rs"}
+filesystem="$repository/crates/sleeve-core/src/filesystem_wrapper.rs"
+middleware_filesystem=${2:-"$repository/../wasm-component-middleware/crates/wasm-component-middleware-wasi/src/p3/filesystem.rs"}
 
 if [[ ! -f "$middleware" ]]; then
   echo "middleware p3 gate not found: $middleware" >&2
+  exit 1
+fi
+
+if [[ ! -f "$middleware_filesystem" ]]; then
+  echo "middleware p3 filesystem gate not found: $middleware_filesystem" >&2
   exit 1
 fi
 
@@ -46,3 +53,5 @@ printf '%-18s %8d %12d\n' 'request-options' "$sleeve_options" "$middleware_optio
 printf '%-18s %8d %12d\n' 'request' "$sleeve_request" "$middleware_request"
 printf '%-18s %8d %12d\n' 'response' "$sleeve_response" "$middleware_response"
 printf '%-18s %8d %12d\n' 'client' "$sleeve_client" "$middleware_client"
+printf '\n%-18s %8s %12s\n' 'filesystem' 'sleeve' 'middleware'
+printf '%-18s %8d %12d\n' 'subset/full gate' "$(wc -l < "$filesystem")" "$(wc -l < "$middleware_filesystem")"
