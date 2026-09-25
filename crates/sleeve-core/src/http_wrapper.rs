@@ -666,6 +666,8 @@ macro_rules! export_http_sleeve {
             }
         }
 
+        $crate::export_anchor!($bindings);
+
         #[allow(unsafe_code)]
         mod component_export {
             use super::{bindings, Component};

@@ -490,10 +490,36 @@ macro_rules! export_notes_sleeve {
             }
         }
 
+        $crate::export_anchor!($bindings);
+
         #[allow(unsafe_code)]
         mod component_export {
             use super::{bindings, Component};
             bindings::export!(Component with_types_in bindings);
+        }
+    };
+}
+
+/// Implements the invocation-long relay anchor for a sleeve component.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! export_anchor {
+    ($bindings:ident) => {
+        impl $bindings::exports::sleeve::platform::anchor::Guest for Component {
+            #[allow(clippy::unused_async_trait_impl)]
+            async fn run() -> u32 {
+                while let Some(relay) = SLEEVE.next_relay().await {
+                    ::wit_bindgen::spawn_local(relay);
+                }
+                0
+            }
+
+            #[allow(clippy::unused_async_trait_impl)]
+            async fn stop() {
+                if let Err(error) = SLEEVE.stop_relays() {
+                    error.trap();
+                }
+            }
         }
     };
 }
