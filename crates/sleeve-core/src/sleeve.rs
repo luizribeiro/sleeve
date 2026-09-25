@@ -20,6 +20,7 @@ struct State {
 pub struct Sleeve {
     state: Mutex<Option<State>>,
     next_call: AtomicU64,
+    next_handle: AtomicU64,
 }
 
 impl Sleeve {
@@ -29,6 +30,7 @@ impl Sleeve {
         Self {
             state: Mutex::new(None),
             next_call: AtomicU64::new(1),
+            next_handle: AtomicU64::new(1),
         }
     }
 
@@ -40,6 +42,7 @@ impl Sleeve {
     /// sleeve while its state is being updated.
     pub fn start(&self, mut chain: Chain, invocation: String) -> Result<(), DispatchError> {
         self.next_call.store(1, Ordering::Relaxed);
+        self.next_handle.store(1, Ordering::Relaxed);
         chain.observe(&Event::InvocationStarted(InvocationStarted::new(
             invocation,
         )));
@@ -93,6 +96,24 @@ impl Sleeve {
         let value = forward.await;
         self.finish_call(&call, active, ReturnStatus::Ok, Vec::new())?;
         Ok(value)
+    }
+
+    /// Allocates an invocation-local identifier for a wrapped handle.
+    #[must_use]
+    pub fn next_handle(&self) -> u64 {
+        self.next_handle.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Registers a handle produced outside a synchronous call return.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError::StateBorrowed`] on synchronous re-entry.
+    pub fn register_handle(&self, handle: crate::ProducedHandle) -> Result<(), DispatchError> {
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        state.handles.insert(handle);
+        Ok(())
     }
 
     fn begin_call<'a>(
