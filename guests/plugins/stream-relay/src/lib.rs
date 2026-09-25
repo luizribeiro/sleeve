@@ -12,6 +12,9 @@ use bindings::example::stream_relay::relay;
 const BUFFERED_MODE: u8 = 1;
 const OPEN_MODE: u8 = 2;
 const CALL_SCOPED_MODE: u8 = 3;
+const SHUTDOWN_MODE: u8 = 4;
+const SHUTDOWN_CHUNKS: usize = 2;
+const CHUNK_SIZE: usize = 64 * 1024;
 
 #[allow(unsafe_code, missing_docs, clippy::same_length_and_capacity)]
 mod bindings {
@@ -36,6 +39,17 @@ impl bindings::Guest for Component {
                 drop(remaining);
                 drop(body);
                 drop(trailers);
+            });
+            return relay::send(mode, body_reader, trailers_reader).await;
+        }
+        if mode == SHUTDOWN_MODE {
+            wit_bindgen::spawn_local(async move {
+                for _ in 0..SHUTDOWN_CHUNKS {
+                    let remaining = body.write_all(vec![b'x'; CHUNK_SIZE]).await;
+                    drop(remaining);
+                }
+                core::mem::forget(body);
+                core::mem::forget(trailers);
             });
             return relay::send(mode, body_reader, trailers_reader).await;
         }

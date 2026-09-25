@@ -223,7 +223,7 @@ async fn query_allows_a_read_after_the_plugin_closes_both_channels() {
 #[tokio::test]
 async fn query_is_refused_while_the_plugin_writer_remains_open() {
     let (mut store, guest) = instantiate().await;
-    assert_eq!(run(&mut store, &guest, 2, 4).await, (18, 1));
+    assert_eq!(run(&mut store, &guest, 2, 4).await, (18, 0));
     assert!(
         store
             .data()
@@ -235,26 +235,17 @@ async fn query_is_refused_while_the_plugin_writer_remains_open() {
 }
 
 #[tokio::test]
-async fn ending_with_a_pending_relay_cancels_it_before_policy_state_ends() {
+async fn ending_mid_copy_preserves_only_bytes_already_relayed() {
+    const RELAYED: usize = 2 * 64 * 1024;
     let (mut store, guest) = instantiate().await;
-    assert_eq!(run(&mut store, &guest, 2, 4).await, (18, 1));
-    assert_eq!(store.data().bytes.load(Ordering::Relaxed), 0);
-    assert!(
-        store
-            .data()
-            .events
-            .iter()
-            .any(|event| event == "body-cancelled-closed-state-ok")
-    );
-    assert!(
-        store
-            .data()
-            .events
-            .iter()
-            .any(|event| event == "trailers-cancelled-closed-state-ok")
-    );
+    let bytes = Arc::clone(&store.data().bytes);
+    assert_eq!(run(&mut store, &guest, 4, 0).await, (17, 0));
+    assert_eq!(bytes.load(Ordering::Relaxed), RELAYED);
     end(&mut store, &guest).await;
-    assert_eq!(store.data().bytes.load(Ordering::Relaxed), 0);
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(bytes.load(Ordering::Relaxed), RELAYED);
     assert!(
         store
             .data()

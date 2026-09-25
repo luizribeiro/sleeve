@@ -5,21 +5,19 @@
 
 extern crate alloc;
 
-use alloc::collections::VecDeque;
 use alloc::{format, string::ToString, vec::Vec};
-use core::future::{Future, IntoFuture, poll_fn};
-use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use core::task::Poll;
+use core::future::IntoFuture;
+use core::sync::atomic::{AtomicU64, Ordering};
 
 use bindings::exports::example::stream_relay::relay::Guest;
 use sleeve_core::{
     Call, Chain, ChannelKind, Decision, Denied, Metadata, Policy, PolicyState, Returned, Sleeve,
 };
-use spin::Mutex;
-
 const CHUNK_SIZE: usize = 64 * 1024;
 const BUFFERED_MODE: u8 = 1;
 const CALL_SCOPED_MODE: u8 = 3;
+const SHUTDOWN_MODE: u8 = 4;
+const SHUTDOWN_BYTES: u32 = 2 * 64 * 1024;
 
 #[allow(unsafe_code, missing_docs, clippy::same_length_and_capacity)]
 mod bindings {
@@ -34,16 +32,29 @@ mod bindings {
 
 static SLEEVE: Sleeve = Sleeve::new();
 static NEXT_CHANNEL: AtomicU64 = AtomicU64::new(1);
-static STOP: AtomicBool = AtomicBool::new(false);
-static RELAYS: Mutex<VecDeque<Relay>> = Mutex::new(VecDeque::new());
 
 struct Relay {
     source: wit_bindgen::StreamReader<u8>,
     trailers: wit_bindgen::FutureReader<u8>,
     destination: wit_bindgen::StreamWriter<u8>,
     destination_trailers: wit_bindgen::FutureWriter<u8>,
-    body_id: u64,
-    trailers_id: u64,
+    channels: RelayChannels,
+}
+
+struct RelayChannels {
+    body: Option<u64>,
+    trailers: Option<u64>,
+}
+
+impl Drop for RelayChannels {
+    fn drop(&mut self) {
+        if let Some(id) = self.body.take() {
+            let _closed = SLEEVE.close_channel(id);
+        }
+        if let Some(id) = self.trailers.take() {
+            let _closed = SLEEVE.close_channel(id);
+        }
+    }
 }
 
 struct QueryPolicy;
@@ -92,17 +103,22 @@ impl Guest for Component {
             trailers,
             destination,
             destination_trailers,
-            body_id: open(ChannelKind::Stream),
-            trailers_id: open(ChannelKind::Future),
+            channels: RelayChannels {
+                body: Some(open(ChannelKind::Stream)),
+                trailers: Some(open(ChannelKind::Future)),
+            },
         };
-        let Some(mut queue) = RELAYS.try_lock() else {
+        if SLEEVE.enqueue_relay(relay_one(relay)).is_err() {
             core::arch::wasm32::unreachable();
-        };
-        queue.push_back(relay);
-        drop(queue);
+        }
 
+        let expected = if mode == SHUTDOWN_MODE {
+            SHUTDOWN_BYTES
+        } else {
+            0
+        };
         let accepted =
-            bindings::example::stream_relay::sink::accept(0, body, forwarded_trailers).await;
+            bindings::example::stream_relay::sink::accept(expected, body, forwarded_trailers).await;
         bindings::example::stream_relay::sink::log("send-returned".to_string()).await;
         accepted
     }
@@ -127,34 +143,9 @@ impl Guest for Component {
     }
 }
 
-impl bindings::exports::sleeve::platform::anchor::Guest for Component {
-    async fn run() -> u32 {
-        let mut cancelled = 0_u32;
-        loop {
-            let relay = RELAYS.try_lock().and_then(|mut queue| queue.pop_front());
-            if let Some(relay) = relay {
-                cancelled += u32::from(relay_one(relay).await);
-            } else if STOP.load(Ordering::Relaxed) {
-                return cancelled;
-            } else {
-                wit_bindgen::yield_async().await;
-            }
-        }
-    }
-
-    async fn stop() {
-        STOP.store(true, Ordering::Relaxed);
-    }
-}
-
-async fn relay_one(mut relay: Relay) -> bool {
+async fn relay_one(mut relay: Relay) {
     loop {
-        let Some((status, bytes)) =
-            until_stop(relay.source.read(Vec::with_capacity(CHUNK_SIZE))).await
-        else {
-            cancel(relay).await;
-            return true;
-        };
+        let (status, bytes) = relay.source.read(Vec::with_capacity(CHUNK_SIZE)).await;
         if !bytes.is_empty() && !relay.destination.write_all(bytes).await.is_empty() {
             break;
         }
@@ -163,35 +154,15 @@ async fn relay_one(mut relay: Relay) -> bool {
         }
     }
     drop(relay.destination);
-    close(relay.body_id, "body").await;
+    if let Some(id) = relay.channels.body.take() {
+        close(id, "body").await;
+    }
 
-    let Some(trailers) = until_stop(relay.trailers.into_future()).await else {
-        close(relay.trailers_id, "trailers-cancelled").await;
-        return true;
-    };
+    let trailers = relay.trailers.into_future().await;
     let _write = relay.destination_trailers.write(trailers).await;
-    close(relay.trailers_id, "trailers").await;
-    false
-}
-
-async fn until_stop<F: Future>(future: F) -> Option<F::Output> {
-    let mut future = core::pin::pin!(future);
-    poll_fn(|context| {
-        if STOP.load(Ordering::Relaxed) {
-            Poll::Ready(None)
-        } else {
-            context.waker().wake_by_ref();
-            future.as_mut().poll(context).map(Some)
-        }
-    })
-    .await
-}
-
-async fn cancel(relay: Relay) {
-    drop(relay.destination);
-    drop(relay.destination_trailers);
-    close(relay.body_id, "body-cancelled").await;
-    close(relay.trailers_id, "trailers-cancelled").await;
+    if let Some(id) = relay.channels.trailers.take() {
+        close(id, "trailers").await;
+    }
 }
 
 async fn buffer(
@@ -287,7 +258,6 @@ async fn close(id: u64, name: &str) {
 
 impl bindings::exports::sleeve::platform::lifecycle::Guest for Component {
     fn start(invocation: alloc::string::String) {
-        STOP.store(false, Ordering::Relaxed);
         if SLEEVE
             .start(Chain::new().with(QueryPolicy), invocation)
             .is_err()
@@ -297,12 +267,13 @@ impl bindings::exports::sleeve::platform::lifecycle::Guest for Component {
     }
 
     fn end(invocation: alloc::string::String, trapped: bool) {
-        STOP.store(true, Ordering::Relaxed);
         if SLEEVE.end(invocation, trapped).is_err() {
             core::arch::wasm32::unreachable();
         }
     }
 }
+
+sleeve_core::export_anchor!(bindings);
 
 #[allow(unsafe_code)]
 mod component_export {
