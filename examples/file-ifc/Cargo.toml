@@ -1,0 +1,19 @@
+[package]
+name = "file-ifc"
+publish.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+file-scenarios = { path = "../../support/file-scenarios" }
+guest-build = { path = "../../support/guest-build" }
+sleeve-host = { path = "../../crates/sleeve-host" }
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true
