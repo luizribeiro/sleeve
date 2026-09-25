@@ -1,0 +1,7 @@
+package example:file-scenarios@0.1.0;
+
+world plugin {
+  import wasi:filesystem/types@0.3.0;
+  import wasi:filesystem/preopens@0.3.0;
+  export run: async func(scenario: u8) -> string;
+}

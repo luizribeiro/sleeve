@@ -62,6 +62,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "file-scenarios-plugin"
+version = "0.0.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "filesystem-bypass"
 version = "0.0.0"
 dependencies = [
