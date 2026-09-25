@@ -1171,6 +1171,9 @@ dependencies = [
 [[package]]
 name = "sleeve-policy-ifc-stub"
 version = "0.0.0"
+dependencies = [
+ "sleeve-core",
+]
 
 [[package]]
 name = "sleeve-policy-trace"

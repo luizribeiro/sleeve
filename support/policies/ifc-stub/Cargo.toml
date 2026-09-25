@@ -7,5 +7,8 @@ repository.workspace = true
 rust-version.workspace = true
 version.workspace = true
 
+[dependencies]
+sleeve-core = { path = "../../../crates/sleeve-core" }
+
 [lints]
 workspace = true
