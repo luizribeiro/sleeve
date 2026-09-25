@@ -1,4 +1,6 @@
 target/
+hosts/jco/generated/
+hosts/jco/node_modules/
 .direnv/
 result
 .pre-commit-config.yaml

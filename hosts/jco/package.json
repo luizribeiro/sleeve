@@ -1,0 +1,9 @@
+{
+  "name": "sleeve-jco-host",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@bytecodealliance/jco": "1.35.0",
+    "@bytecodealliance/preview3-shim": "0.7.0"
+  }
+}
