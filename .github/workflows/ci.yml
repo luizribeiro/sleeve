@@ -21,6 +21,8 @@ jobs:
       - uses: ./.github/actions/setup-nix
       - name: Check flake
         run: nix flake check
+      - name: Install Node dependencies
+        run: nix develop -c npm ci --prefix hosts/jco --ignore-scripts
       - name: Run pre-commit hooks
         run: nix develop -c pre-commit run --all-files --show-diff-on-failure
       - name: Run pre-push hooks
