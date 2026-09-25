@@ -54,9 +54,21 @@ impl bindings::Guest for Component {
                 let note = bindings::example::notes::notes::read("secret".into()).await;
                 format!("{status} {note}")
             }
+            8 => fetch_repeatedly(authority, body_size).await,
             _ => "unknown scenario".into(),
         }
     }
+}
+
+async fn fetch_repeatedly(authority: String, count: u32) -> String {
+    let mut results = String::new();
+    for index in 0..count {
+        if index > 0 {
+            results.push_str(", ");
+        }
+        results.push_str(&fetch_empty(authority.clone()).await);
+    }
+    results
 }
 
 async fn fetch_empty(authority: String) -> String {

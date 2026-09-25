@@ -1,0 +1,14 @@
+package example:custom-policy-sleeve@0.1.0;
+
+world sleeve {
+  import example:notes/notes@0.1.0;
+  import wasi:http/types@0.3.0;
+  import wasi:http/client@0.3.0;
+  import sleeve:platform/audit@0.1.0;
+  import sleeve:platform/settings@0.1.0;
+  export example:notes/notes@0.1.0;
+  export wasi:http/types@0.3.0;
+  export wasi:http/client@0.3.0;
+  export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
+}

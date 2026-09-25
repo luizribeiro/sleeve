@@ -1,0 +1,12 @@
+[package]
+name = "example-count-policy"
+publish.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+sleeve-core = { path = "../../../../crates/sleeve-core" }
+
+[lints]
+workspace = true

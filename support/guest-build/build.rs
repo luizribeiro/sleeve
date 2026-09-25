@@ -1,10 +1,11 @@
 //! Builds the isolated WebAssembly guest workspace for host-side tests.
 
-use std::env;
-use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+#[path = "src/build_support.rs"]
+#[allow(dead_code)]
+mod build_support;
 
 const GUESTS: &[(&str, &str)] = &[
     ("BYPASS_COMPONENT", "bypass"),
@@ -42,24 +43,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repository = crate_dir.join("../..");
     let guest_dir = repository.join("guests");
     let out_dir = PathBuf::from(required_var("OUT_DIR")?);
-    let main_target_dir = out_dir
-        .ancestors()
-        .nth(4)
-        .ok_or_else(|| io::Error::other("OUT_DIR is not inside Cargo's target directory"))?;
-    let guest_target_dir = main_target_dir.join("guest-build");
+    let guest_target_dir = build_support::auxiliary_target_dir(&out_dir, "guest-build")?;
 
-    build_guest_workspace(&guest_dir.join("Cargo.toml"), &guest_target_dir)?;
+    let packages = GUESTS
+        .iter()
+        .map(|(_, package)| *package)
+        .collect::<Vec<_>>();
+    let components = build_support::build_components(
+        &guest_dir.join("Cargo.toml"),
+        &guest_target_dir,
+        &packages,
+    )?;
     let wasip2_target_dir = guest_target_dir.join("wasip2-experiment");
     build_wasip2_experiments(&guest_dir.join("Cargo.toml"), &wasip2_target_dir)?;
 
-    let release_dir = guest_target_dir.join("wasm32-unknown-unknown/release");
-    let component_dir = guest_target_dir.join("components");
-    std::fs::create_dir_all(&component_dir)?;
-    for &(variable, package) in GUESTS {
-        let module = release_dir.join(package.replace('-', "_") + ".wasm");
-        let component = component_dir.join(package.to_owned() + ".wasm");
-        componentize(&module, &component)?;
-        emit_guest_path(variable, &component);
+    for ((variable, _), component) in GUESTS.iter().zip(&components) {
+        emit_guest_path(variable, component);
     }
     emit_guest_path(
         "WASIP2_NOTE_SUMMARY_COMPONENT",
@@ -81,83 +80,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn build_wasip2_experiments(manifest: &Path, target_dir: &Path) -> io::Result<()> {
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let mut command = Command::new(cargo);
-    command.args([
-        OsStr::new("build"),
-        OsStr::new("--release"),
-        OsStr::new("--target"),
-        OsStr::new("wasm32-wasip2"),
-        OsStr::new("--manifest-path"),
-        manifest.as_os_str(),
-        OsStr::new("--target-dir"),
-        target_dir.as_os_str(),
-        OsStr::new("--locked"),
-        OsStr::new("-p"),
-        OsStr::new("note-summary"),
-        OsStr::new("-p"),
-        OsStr::new("passthrough-sleeve"),
-    ]);
-    clear_cargo_environment(&mut command);
-    let status = command.status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "wasip2 experiment build failed with {status}"
-        )));
-    }
-    Ok(())
-}
-
-fn build_guest_workspace(manifest: &Path, target_dir: &Path) -> io::Result<()> {
-    let cargo = env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let mut command = Command::new(cargo);
-    command.args([
-        OsStr::new("build"),
-        OsStr::new("--release"),
-        OsStr::new("--target"),
-        OsStr::new("wasm32-unknown-unknown"),
-        OsStr::new("--manifest-path"),
-        manifest.as_os_str(),
-        OsStr::new("--target-dir"),
-        target_dir.as_os_str(),
-        OsStr::new("--locked"),
-    ]);
-    clear_cargo_environment(&mut command);
-
-    let status = command.status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "guest build failed with {status}"
-        )));
-    }
-    Ok(())
-}
-
-fn clear_cargo_environment(command: &mut Command) {
-    for (key, _) in env::vars_os() {
-        if key.to_string_lossy().starts_with("CARGO_") || key == "RUSTFLAGS" {
-            command.env_remove(key);
-        }
-    }
+    build_support::build_packages(
+        manifest,
+        target_dir,
+        "wasm32-wasip2",
+        &["note-summary", "passthrough-sleeve"],
+    )
 }
 
 fn required_var(name: &str) -> io::Result<std::ffi::OsString> {
-    env::var_os(name).ok_or_else(|| io::Error::other(format!("{name} is not set")))
-}
-
-fn componentize(module: &Path, component: &Path) -> io::Result<()> {
-    let status = Command::new("wasm-tools")
-        .args([OsStr::new("component"), OsStr::new("new")])
-        .arg(module)
-        .arg("-o")
-        .arg(component)
-        .status()?;
-    if !status.success() {
-        return Err(io::Error::other(format!(
-            "component creation failed with {status}"
-        )));
-    }
-    Ok(())
+    std::env::var_os(name).ok_or_else(|| io::Error::other(format!("{name} is not set")))
 }
 
 fn emit_guest_path(variable: &str, component: &Path) {

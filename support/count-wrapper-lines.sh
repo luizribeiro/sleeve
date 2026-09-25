@@ -55,3 +55,8 @@ printf '%-18s %8d %12d\n' 'response' "$sleeve_response" "$middleware_response"
 printf '%-18s %8d %12d\n' 'client' "$sleeve_client" "$middleware_client"
 printf '\n%-18s %8s %12s\n' 'filesystem' 'sleeve' 'middleware'
 printf '%-18s %8d %12d\n' 'subset/full gate' "$(wc -l < "$filesystem")" "$(wc -l < "$middleware_filesystem")"
+
+printf '\n%-18s %8s\n' 'custom policy' 'lines'
+for source in guest/policy/src/lib.rs guest/sleeve/src/lib.rs src/main.rs; do
+  printf '%-18s %8d\n' "$source" "$(wc -l < "$repository/examples/custom-policy/$source")"
+done

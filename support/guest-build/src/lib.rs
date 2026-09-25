@@ -5,6 +5,10 @@
 
 use std::path::Path;
 
+mod build_support;
+
+pub use build_support::{auxiliary_target_dir, build_component, build_components, build_packages};
+
 /// Returns the path to the plugin with a lookalike notes import.
 #[must_use]
 pub fn bypass() -> &'static Path {

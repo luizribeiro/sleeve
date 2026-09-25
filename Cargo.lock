@@ -360,6 +360,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "custom-policy"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "guest-build",
+ "http-scenarios",
+ "sleeve-host",
+ "tokio",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
