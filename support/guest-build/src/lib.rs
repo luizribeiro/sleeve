@@ -71,6 +71,18 @@ pub fn read_many() -> &'static Path {
     Path::new(env!("READ_MANY_COMPONENT"))
 }
 
+/// Returns the plugin that writes to relayed channels.
+#[must_use]
+pub fn stream_relay_plugin() -> &'static Path {
+    Path::new(env!("STREAM_RELAY_PLUGIN_COMPONENT"))
+}
+
+/// Returns the sleeve that relays channels to a host sink.
+#[must_use]
+pub fn stream_relay_sleeve() -> &'static Path {
+    Path::new(env!("STREAM_RELAY_SLEEVE_COMPONENT"))
+}
+
 /// Returns the path to the notes sleeve with tracing enabled.
 #[must_use]
 pub fn trace_sleeve() -> &'static Path {

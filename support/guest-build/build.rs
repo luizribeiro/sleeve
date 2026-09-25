@@ -18,6 +18,8 @@ const GUESTS: &[(&str, &str)] = &[
     ("PLATFORM_EXPORT_COMPONENT", "platform-export"),
     ("PLATFORM_IMPORT_COMPONENT", "platform-import"),
     ("READ_MANY_COMPONENT", "read-many"),
+    ("STREAM_RELAY_PLUGIN_COMPONENT", "stream-relay-plugin"),
+    ("STREAM_RELAY_SLEEVE_COMPONENT", "stream-relay-sleeve"),
     ("SMOKE_COMPONENT", "smoke"),
     ("TRACE_SLEEVE_COMPONENT", "trace-sleeve"),
     ("IFC_SLEEVE_COMPONENT", "ifc-sleeve"),

@@ -1,0 +1,30 @@
+package example:stream-relay@0.1.0;
+
+interface relay {
+  send: async func(mode: u8, body: stream<u8>, trailers: future<u8>) -> u32;
+  mark: async func(name: string);
+}
+
+interface sink {
+  accept: async func(mode: u8, body: stream<u8>, trailers: future<u8>) -> u32;
+  log: async func(event: string);
+}
+
+world plugin {
+  import relay;
+  export run: async func(mode: u8, size: u32) -> u32;
+}
+
+world sleeve {
+  import sink;
+  export relay;
+  export sleeve:platform/lifecycle@0.1.0;
+  export drop-future: async func();
+}
+
+world composed {
+  import sink;
+  export run: async func(mode: u8, size: u32) -> u32;
+  export sleeve:platform/lifecycle@0.1.0;
+  export drop-future: async func();
+}
