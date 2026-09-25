@@ -60,6 +60,181 @@ macro_rules! export_http_sleeve {
         type WrappedOptions = Wrapped<ImportedOptions>;
         type WrappedResponse = Wrapped<ImportedResponse>;
 
+        struct RequestChannels {
+            body: ::core::option::Option<u64>,
+            trailers: ::core::option::Option<u64>,
+        }
+
+        impl RequestChannels {
+            fn close_body(&mut self) {
+                if let Some(id) = self.body.take() {
+                    close_channel(id);
+                }
+            }
+
+            fn close_trailers(&mut self) {
+                if let Some(id) = self.trailers.take() {
+                    close_channel(id);
+                }
+            }
+
+            fn close_all(&mut self) {
+                self.close_body();
+                self.close_trailers();
+            }
+        }
+
+        impl Drop for RequestChannels {
+            fn drop(&mut self) {
+                self.close_all();
+            }
+        }
+
+        struct RequestParts {
+            headers: ImportedFields,
+            body: ::core::option::Option<::wit_bindgen::StreamReader<u8>>,
+            trailers: ::wit_bindgen::FutureReader<
+                Result<::core::option::Option<ExportedFields>, ErrorCode>,
+            >,
+            options: ::core::option::Option<ImportedOptions>,
+            method: $bindings::exports::wasi::http::types::Method,
+            path: ::core::option::Option<::alloc::string::String>,
+            scheme: ::core::option::Option<$bindings::exports::wasi::http::types::Scheme>,
+            authority: ::core::option::Option<::alloc::string::String>,
+            channels: RequestChannels,
+            result_id: u64,
+            result_writer: ::wit_bindgen::FutureWriter<Result<(), ErrorCode>>,
+        }
+
+        struct WrappedRequest {
+            id: u64,
+            parts: ::core::cell::RefCell<::core::option::Option<RequestParts>>,
+        }
+
+        impl WrappedRequest {
+            fn take(mut self) -> RequestParts {
+                observe_drop(self.id);
+                match self.parts.get_mut().take() {
+                    Some(parts) => parts,
+                    None => ::core::arch::wasm32::unreachable(),
+                }
+            }
+
+            fn update(&self, update: impl FnOnce(&mut RequestParts)) -> Result<(), ()> {
+                let mut parts = self.parts.try_borrow_mut().map_err(|_| ())?;
+                let parts = parts.as_mut().ok_or(())?;
+                update(parts);
+                Ok(())
+            }
+        }
+
+        impl Drop for WrappedRequest {
+            fn drop(&mut self) {
+                if let Some(parts) = self.parts.get_mut().take() {
+                    observe_drop(parts.result_id);
+                    observe_drop(self.id);
+                }
+            }
+        }
+
+        fn observe_drop(id: u64) {
+            let _result = SLEEVE.drop_handle(id);
+        }
+
+        fn close_channel(id: u64) {
+            if let Err(error) = SLEEVE.close_channel(id) {
+                error.trap();
+            }
+        }
+
+        fn dispatch_or_trap<T>(result: Result<T, $crate::DispatchError>) -> T {
+            match result {
+                Ok(value) => value,
+                Err(error) => error.trap(),
+            }
+        }
+
+        fn http_dispatch(
+            result: Result<Result<ImportedResponse, ErrorCode>, $crate::DispatchError>,
+        ) -> Result<ImportedResponse, ErrorCode> {
+            match result {
+                Ok(result) => result,
+                Err(error) => match error.into_http_denial() {
+                    Ok(error) => Err(error),
+                    Err(error) => error.trap(),
+                },
+            }
+        }
+
+        fn map_header_error(
+            error: $bindings::wasi::http::types::HeaderError,
+        ) -> $bindings::exports::wasi::http::types::HeaderError {
+            use $bindings::exports::wasi::http::types::HeaderError as Out;
+            use $bindings::wasi::http::types::HeaderError as In;
+            match error {
+                In::InvalidSyntax => Out::InvalidSyntax,
+                In::Forbidden => Out::Forbidden,
+                In::Immutable => Out::Immutable,
+                In::SizeExceeded => Out::SizeExceeded,
+                In::Other(message) => Out::Other(message),
+            }
+        }
+
+        fn import_method(
+            method: $bindings::exports::wasi::http::types::Method,
+        ) -> $bindings::wasi::http::types::Method {
+            use $bindings::exports::wasi::http::types::Method as Out;
+            use $bindings::wasi::http::types::Method as In;
+            match method {
+                Out::Get => In::Get,
+                Out::Head => In::Head,
+                Out::Post => In::Post,
+                Out::Put => In::Put,
+                Out::Delete => In::Delete,
+                Out::Connect => In::Connect,
+                Out::Options => In::Options,
+                Out::Trace => In::Trace,
+                Out::Patch => In::Patch,
+                Out::Other(method) => In::Other(method),
+            }
+        }
+
+        fn import_scheme(
+            scheme: &$bindings::exports::wasi::http::types::Scheme,
+        ) -> $bindings::wasi::http::types::Scheme {
+            use $bindings::exports::wasi::http::types::Scheme as Out;
+            use $bindings::wasi::http::types::Scheme as In;
+            match scheme {
+                Out::Http => In::Http,
+                Out::Https => In::Https,
+                Out::Other(scheme) => In::Other(scheme.clone()),
+            }
+        }
+
+        fn scheme_name(
+            scheme: &$bindings::exports::wasi::http::types::Scheme,
+        ) -> &str {
+            use $bindings::exports::wasi::http::types::Scheme;
+            match scheme {
+                Scheme::Http => "http",
+                Scheme::Https => "https",
+                Scheme::Other(scheme) => scheme,
+            }
+        }
+
+        fn origin(parts: &RequestParts) -> Result<::alloc::string::String, ErrorCode> {
+            let scheme = parts
+                .scheme
+                .as_ref()
+                .ok_or(ErrorCode::HttpRequestUriInvalid)?;
+            let authority = parts
+                .authority
+                .as_deref()
+                .ok_or(ErrorCode::HttpRequestUriInvalid)?;
+            $crate::http::normalize_origin(scheme_name(scheme), authority)
+                .map_err(|_| ErrorCode::HttpRequestUriInvalid)
+        }
+
         impl $bindings::exports::wasi::http::types::GuestFields for WrappedFields {
             fn new() -> Self {
                 let id = SLEEVE.next_handle();
@@ -134,5 +309,140 @@ macro_rules! export_http_sleeve {
                 ))
             }
         }
+
+        impl $bindings::exports::wasi::http::types::GuestRequest for WrappedRequest {
+            fn new(
+                headers: ExportedFields,
+                contents: ::core::option::Option<::wit_bindgen::StreamReader<u8>>,
+                trailers: ::wit_bindgen::FutureReader<
+                    Result<::core::option::Option<ExportedFields>, ErrorCode>,
+                >,
+                options: ::core::option::Option<ExportedOptions>,
+            ) -> (
+                ExportedRequest,
+                ::wit_bindgen::FutureReader<Result<(), ErrorCode>>,
+            ) {
+                let headers_id = headers.get::<WrappedFields>().id;
+                let headers = headers.into_inner::<WrappedFields>().take();
+                let (options, option_id) = match options {
+                    Some(options) => {
+                        let id = options.get::<WrappedOptions>().id;
+                        (Some(options.into_inner::<WrappedOptions>().take()), Some(id))
+                    }
+                    None => (None, None),
+                };
+                let id = SLEEVE.next_handle();
+                let result_id = SLEEVE.next_handle();
+                let body_channel = contents.as_ref().map(|_| SLEEVE.next_handle());
+                let trailers_channel = SLEEVE.next_handle();
+                let (result_writer, result_reader) =
+                    $bindings::wit_future::new(|| Ok(()));
+                let mut handles = ::alloc::vec![headers_id];
+                if let Some(id) = option_id {
+                    handles.push(id);
+                }
+                let request = dispatch_or_trap(SLEEVE.dispatch_sync(
+                    HTTP_TYPES,
+                    "[static]request.new",
+                    ::alloc::vec::Vec::new(),
+                    handles,
+                    ::alloc::vec![
+                        (id, "wasi:http/types.request"),
+                        (result_id, "future<wasi:http/request-result>"),
+                    ],
+                    |call_id| {
+                        if let Some(channel) = body_channel {
+                            dispatch_or_trap(SLEEVE.open_channel(
+                                channel,
+                                $crate::ChannelKind::Stream,
+                                call_id,
+                            ));
+                        }
+                        dispatch_or_trap(SLEEVE.open_channel(
+                            trailers_channel,
+                            $crate::ChannelKind::Future,
+                            call_id,
+                        ));
+                        ExportedRequest::new(WrappedRequest {
+                            id,
+                            parts: ::core::cell::RefCell::new(Some(RequestParts {
+                                headers,
+                                body: contents,
+                                trailers,
+                                options,
+                                method: $bindings::exports::wasi::http::types::Method::Get,
+                                path: None,
+                                scheme: None,
+                                authority: None,
+                                channels: RequestChannels {
+                                    body: body_channel,
+                                    trailers: Some(trailers_channel),
+                                },
+                                result_id,
+                                result_writer,
+                            })),
+                        })
+                    },
+                ));
+                (request, result_reader)
+            }
+
+            fn set_method(
+                &self,
+                method: $bindings::exports::wasi::http::types::Method,
+            ) -> Result<(), ()> {
+                dispatch_or_trap(SLEEVE.dispatch_sync_result(
+                    HTTP_TYPES,
+                    "[method]request.set-method",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![self.id],
+                    ::alloc::vec::Vec::new(),
+                    |_| self.update(|parts| parts.method = method),
+                ))
+            }
+
+            fn set_path_with_query(
+                &self,
+                path: ::core::option::Option<::alloc::string::String>,
+            ) -> Result<(), ()> {
+                dispatch_or_trap(SLEEVE.dispatch_sync_result(
+                    HTTP_TYPES,
+                    "[method]request.set-path-with-query",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![self.id],
+                    ::alloc::vec::Vec::new(),
+                    |_| self.update(|parts| parts.path = path),
+                ))
+            }
+
+            fn set_scheme(
+                &self,
+                scheme: ::core::option::Option<$bindings::exports::wasi::http::types::Scheme>,
+            ) -> Result<(), ()> {
+                dispatch_or_trap(SLEEVE.dispatch_sync_result(
+                    HTTP_TYPES,
+                    "[method]request.set-scheme",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![self.id],
+                    ::alloc::vec::Vec::new(),
+                    |_| self.update(|parts| parts.scheme = scheme),
+                ))
+            }
+
+            fn set_authority(
+                &self,
+                authority: ::core::option::Option<::alloc::string::String>,
+            ) -> Result<(), ()> {
+                dispatch_or_trap(SLEEVE.dispatch_sync_result(
+                    HTTP_TYPES,
+                    "[method]request.set-authority",
+                    ::alloc::vec::Vec::new(),
+                    ::alloc::vec![self.id],
+                    ::alloc::vec::Vec::new(),
+                    |_| self.update(|parts| parts.authority = authority),
+                ))
+            }
+        }
+
     };
 }
