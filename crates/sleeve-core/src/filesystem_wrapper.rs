@@ -82,12 +82,11 @@ macro_rules! impl_filesystem_wrapper {
 
         /// Relays a read stream without blocking the synchronous constructor.
         async fn relay_file_read(
-            descriptor: ::alloc::sync::Arc<ImportedDescriptor>,
-            offset: u64,
+            mut source: ::wit_bindgen::StreamReader<u8>,
+            completion: ::wit_bindgen::FutureReader<Result<(), FileError>>,
             mut destination: ::wit_bindgen::StreamWriter<u8>,
             result: ::wit_bindgen::FutureWriter<Result<(), FileError>>,
         ) {
-            let (mut source, completion) = descriptor.read_via_stream(offset);
             copy_stream(&mut source, &mut destination).await;
             drop(destination);
             let completed = completion.await;
@@ -97,15 +96,12 @@ macro_rules! impl_filesystem_wrapper {
         /// The channel closes once the plugin writer is drained because the plugin
         /// can no longer send bytes, even if host completion is still pending.
         async fn relay_file_write(
-            descriptor: ::alloc::sync::Arc<ImportedDescriptor>,
             mut source: ::wit_bindgen::StreamReader<u8>,
-            offset: u64,
             mut destination: ::wit_bindgen::StreamWriter<u8>,
-            host_reader: ::wit_bindgen::StreamReader<u8>,
+            completion: ::wit_bindgen::FutureReader<Result<(), FileError>>,
             result: ::wit_bindgen::FutureWriter<Result<(), FileError>>,
             mut channel: FileChannel,
         ) {
-            let completion = descriptor.write_via_stream(host_reader, offset);
             copy_stream(&mut source, &mut destination).await;
             drop(destination);
             channel.close();
@@ -160,9 +156,10 @@ macro_rules! impl_filesystem_wrapper {
                         let (destination, reader) = $bindings::wit_stream::new();
                         let (result, result_reader) =
                             $bindings::wit_future::new(|| Err(FileError::Access));
+                        let (source, completion) = self.inner.read_via_stream(offset);
                         dispatch_or_trap(SLEEVE.enqueue_relay(relay_file_read(
-                            ::alloc::sync::Arc::clone(&self.inner),
-                            offset,
+                            source,
+                            completion,
                             destination,
                             result,
                         )));
@@ -197,12 +194,11 @@ macro_rules! impl_filesystem_wrapper {
                         let (destination, reader) = $bindings::wit_stream::new();
                         let (result, result_reader) =
                             $bindings::wit_future::new(|| Err(FileError::Access));
+                        let completion = self.inner.write_via_stream(reader, offset);
                         let relay = relay_file_write(
-                            ::alloc::sync::Arc::clone(&self.inner),
                             data,
-                            offset,
                             destination,
-                            reader,
+                            completion,
                             result,
                             FileChannel {
                                 id: Some(channel_id),
