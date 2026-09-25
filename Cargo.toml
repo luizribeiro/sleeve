@@ -33,7 +33,10 @@ wasmtime = { version = "49", default-features = false, features = [
   "runtime",
 ] }
 wasmtime-wasi = "49"
-wasmtime-wasi-http = "49"
+wasmtime-wasi-http = { version = "49", default-features = false, features = [
+  "default-send-request",
+  "p3",
+] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
