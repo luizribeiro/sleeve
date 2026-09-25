@@ -29,6 +29,12 @@ pub fn direct_import() -> &'static Path {
     Path::new(env!("DIRECT_IMPORT_COMPONENT"))
 }
 
+/// Returns the path to the plugin that imports an unwrapped HTTP interface.
+#[must_use]
+pub fn http_bypass() -> &'static Path {
+    Path::new(env!("HTTP_BYPASS_COMPONENT"))
+}
+
 /// Returns the path to the plugin that reads two notes.
 #[must_use]
 pub fn note_summary() -> &'static Path {

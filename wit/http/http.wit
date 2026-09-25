@@ -123,3 +123,9 @@ interface client {
 
   send: async func(request: request) -> result<response, error-code>;
 }
+
+interface handler {
+  use types.{request, response, error-code};
+
+  handle: async func(request: request) -> result<response, error-code>;
+}

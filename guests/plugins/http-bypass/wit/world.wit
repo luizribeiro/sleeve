@@ -1,0 +1,7 @@
+package example:http-bypass@0.1.0;
+
+world plugin {
+  import wasi:http/types@0.3.0;
+  import wasi:http/handler@0.3.0;
+  export run: func();
+}

@@ -10,7 +10,11 @@ use wasmparser::{
     ComponentTypeRef, Parser, Payload,
 };
 
-const PLUGIN_INTERFACES: &[&str] = &["example:notes/notes@0.1.0"];
+const PLUGIN_INTERFACES: &[&str] = &[
+    "example:notes/notes@0.1.0",
+    "wasi:http/client@0.3.0",
+    "wasi:http/types@0.3.0",
+];
 
 enum InstanceOrigin {
     Other,

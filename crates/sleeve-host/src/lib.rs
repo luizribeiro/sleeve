@@ -147,6 +147,17 @@ mod tests {
         );
     }
 
+    #[test]
+    fn rejects_an_unwrapped_http_interface() {
+        let sleeve = std::fs::read(guest_build::ifc_sleeve()).unwrap();
+        let plugin = std::fs::read(guest_build::http_bypass()).unwrap();
+
+        assert_eq!(
+            compose(&plugin, &sleeve, sleeve_sha256(&sleeve)).unwrap_err(),
+            LoadError::UnsatisfiedImport("wasi:http/handler@0.3.0".into())
+        );
+    }
+
     #[tokio::test]
     async fn host_refuses_sleeves_other_than_the_approved_bytes() {
         let trace = std::fs::read(guest_build::trace_sleeve()).unwrap();
