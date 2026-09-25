@@ -38,6 +38,20 @@ impl Component {
     ///
     /// Returns an error when composition, file I/O, or jco transpilation fails.
     pub fn transpile(plugin: &[u8], sleeve: &[u8]) -> anyhow::Result<Self> {
+        let bytes = sleeve_host::compose(plugin, sleeve, sleeve_host::sleeve_sha256(sleeve))?;
+        Self::transpile_bytes(&bytes)
+    }
+
+    /// Transpiles one standalone component without composing a sleeve.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when file I/O or jco transpilation fails.
+    pub fn transpile_standalone(component: &[u8]) -> anyhow::Result<Self> {
+        Self::transpile_bytes(component)
+    }
+
+    fn transpile_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
         let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         let jco = repository.join("hosts/jco");
         let generated = jco.join("generated");
@@ -46,7 +60,6 @@ impl Component {
         let component = temporary.path().join("component.wasm");
         let output = temporary.path().join("transpiled");
         let module = output.join("component.js");
-        let bytes = sleeve_host::compose(plugin, sleeve, sleeve_host::sleeve_sha256(sleeve))?;
         std::fs::write(&component, bytes)?;
         successful(
             Command::new("node")
@@ -62,6 +75,31 @@ impl Component {
             jco,
             module,
         })
+    }
+
+    /// Runs one export of the standalone filesystem reproduction.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Node fails or emits an invalid result.
+    pub fn run_standalone_filesystem(
+        &self,
+        export: &str,
+        public: &Path,
+        secret: &Path,
+    ) -> anyhow::Result<Attempt> {
+        let output = successful(
+            Command::new("node")
+                .current_dir(&self.jco)
+                .arg("run-standalone-file.js")
+                .arg(&self.module)
+                .arg(export)
+                .arg(public)
+                .arg(secret)
+                .output()?,
+            "standalone jco filesystem reproduction",
+        )?;
+        serde_json::from_slice(&output.stdout).context("jco host emitted invalid JSON")
     }
 
     /// Runs the HTTP scenarios, optionally selecting one by name.

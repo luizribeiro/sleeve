@@ -19,6 +19,8 @@ file-scenarios = { path = "../file-scenarios" }
 guest-build = { path = "../guest-build" }
 http-scenarios = { path = "../http-scenarios" }
 tokio.workspace = true
+wasmtime.workspace = true
+wasmtime-wasi.workspace = true
 
 [lints]
 workspace = true

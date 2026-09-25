@@ -943,6 +943,8 @@ dependencies = [
  "sleeve-host",
  "tempfile",
  "tokio",
+ "wasmtime",
+ "wasmtime-wasi",
 ]
 
 [[package]]
