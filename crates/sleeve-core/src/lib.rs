@@ -9,6 +9,7 @@ extern crate alloc;
 mod chain;
 mod event;
 mod handles;
+pub mod http;
 mod policy;
 mod sleeve;
 

@@ -206,6 +206,21 @@ pub enum DispatchError {
 }
 
 impl DispatchError {
+    /// Maps a policy refusal at an HTTP boundary to `HTTP-request-denied`.
+    ///
+    /// Traps and lifecycle errors remain errors so the WIT wrapper can trap.
+    ///
+    /// # Errors
+    ///
+    /// Returns itself when the failure must trap rather than become a typed
+    /// HTTP refusal.
+    pub fn into_http_denial(self) -> Result<crate::http::ErrorCode, Self> {
+        match self {
+            Self::Denied(_) => Ok(crate::http::ErrorCode::HttpRequestDenied),
+            other => Err(other),
+        }
+    }
+
     /// Traps the current WebAssembly component call.
     #[cfg(target_arch = "wasm32")]
     pub fn trap(self) -> ! {
