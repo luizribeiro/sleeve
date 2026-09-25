@@ -102,6 +102,23 @@ impl Component {
         serde_json::from_slice(&output.stdout).context("jco host emitted invalid JSON")
     }
 
+    /// Runs two asynchronous exports that rendezvous through a future.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when Node fails or emits an invalid result.
+    pub fn run_concurrent_exports(&self) -> anyhow::Result<Attempt> {
+        let output = successful(
+            Command::new("node")
+                .current_dir(&self.jco)
+                .arg("run-concurrent.js")
+                .arg(&self.module)
+                .output()?,
+            "concurrent jco exports reproduction",
+        )?;
+        serde_json::from_slice(&output.stdout).context("jco host emitted invalid JSON")
+    }
+
     /// Runs the HTTP scenarios, optionally selecting one by name.
     ///
     /// # Errors

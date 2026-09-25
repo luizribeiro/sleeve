@@ -8,6 +8,7 @@ use std::process::Command;
 
 const GUESTS: &[(&str, &str)] = &[
     ("BYPASS_COMPONENT", "bypass"),
+    ("CONCURRENT_EXPORTS_COMPONENT", "concurrent-exports"),
     ("COUNTING_SLEEVE_COMPONENT", "counting-sleeve"),
     ("DENY_SLEEVE_COMPONENT", "deny-sleeve"),
     ("DIRECT_IMPORT_COMPONENT", "direct-import"),

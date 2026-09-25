@@ -22,6 +22,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "concurrent-exports"
+version = "0.0.0"
+dependencies = [
+ "spin",
+ "wit-bindgen",
+]
+
+[[package]]
 name = "counting-sleeve"
 version = "0.0.0"
 dependencies = [

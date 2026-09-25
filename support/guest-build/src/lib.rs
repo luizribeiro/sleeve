@@ -11,6 +11,12 @@ pub fn bypass() -> &'static Path {
     Path::new(env!("BYPASS_COMPONENT"))
 }
 
+/// Returns the component whose asynchronous exports rendezvous through a future.
+#[must_use]
+pub fn concurrent_exports() -> &'static Path {
+    Path::new(env!("CONCURRENT_EXPORTS_COMPONENT"))
+}
+
 /// Returns the path to the sleeve whose policy counts calls.
 #[must_use]
 pub fn counting_sleeve() -> &'static Path {

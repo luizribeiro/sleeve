@@ -1,0 +1,6 @@
+package example:concurrent-exports@0.1.0;
+
+world probe {
+  export run: async func() -> u32;
+  export helper: async func() -> future<u32>;
+}
