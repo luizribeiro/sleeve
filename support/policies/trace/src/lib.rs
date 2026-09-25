@@ -6,7 +6,7 @@
 
 extern crate alloc;
 
-use alloc::{format, string::String, vec::Vec};
+use alloc::{format, string::String, string::ToString, vec::Vec};
 use sleeve_core::{
     Call, ChannelOpened, Decision, Event, InvocationOutcome, Metadata, Policy, PolicyState,
     ReturnStatus, Returned,
@@ -100,7 +100,17 @@ fn format_return(returned: &Returned) -> String {
         ReturnStatus::Trapped(_) => "trapped",
         _ => "unknown",
     };
-    format!("return {} {status}", returned.call_id)
+    let mut record = format!("return {} {status}", returned.call_id);
+    if !returned.handles.is_empty() {
+        record.push_str(" handles=");
+        for (index, handle) in returned.handles.iter().enumerate() {
+            if index > 0 {
+                record.push(',');
+            }
+            record.push_str(&handle.id.to_string());
+        }
+    }
+    record
 }
 
 #[cfg(test)]
@@ -152,6 +162,17 @@ mod tests {
                 "return 1 ok",
                 "invocation end summary returned"
             ]
+        );
+    }
+
+    #[test]
+    fn logs_produced_handles_in_return_order() {
+        assert_eq!(
+            format_return(&Returned::new(7, ReturnStatus::Ok).with_handles(vec![
+                sleeve_core::ProducedHandle::from_call(12, "request", 7),
+                sleeve_core::ProducedHandle::from_call(15, "future", 7),
+            ])),
+            "return 7 ok handles=12,15"
         );
     }
 }
