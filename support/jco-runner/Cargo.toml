@@ -1,0 +1,24 @@
+[package]
+name = "jco-runner"
+publish.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sleeve-host = { path = "../../crates/sleeve-host" }
+tempfile.workspace = true
+
+[dev-dependencies]
+file-scenarios = { path = "../file-scenarios" }
+guest-build = { path = "../guest-build" }
+http-scenarios = { path = "../http-scenarios" }
+tokio.workspace = true
+
+[lints]
+workspace = true

@@ -8,6 +8,7 @@ members = [
   "support/guest-build",
   "support/file-scenarios",
   "support/http-scenarios",
+  "support/jco-runner",
   "support/policies/*",
 ]
 

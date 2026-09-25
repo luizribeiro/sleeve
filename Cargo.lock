@@ -921,6 +921,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
+name = "jco-runner"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "file-scenarios",
+ "guest-build",
+ "http-scenarios",
+ "serde",
+ "serde_json",
+ "sleeve-host",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "leb128"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
