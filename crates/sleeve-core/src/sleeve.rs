@@ -269,8 +269,20 @@ impl Sleeve {
                 state.open_channels.push(opened);
                 Ok(())
             }
-            Decision::Deny(denied) => Err(DispatchError::Denied(denied)),
-            Decision::Trap(trap) => Err(DispatchError::Trap(trap)),
+            Decision::Deny(denied) => {
+                state.chain.observe(&Event::Returned(Returned::new(
+                    call_id,
+                    ReturnStatus::Denied(denied.message().into()),
+                )));
+                Err(DispatchError::Denied(denied))
+            }
+            Decision::Trap(trap) => {
+                state.chain.observe(&Event::Returned(Returned::new(
+                    call_id,
+                    ReturnStatus::Trapped(trap.message().into()),
+                )));
+                Err(DispatchError::Trap(trap))
+            }
         }
     }
 
@@ -411,15 +423,40 @@ mod tests {
     use alloc::vec::Vec;
     use core::future::Future;
     use core::task::{Context, Poll, Waker};
+    use std::sync::{Arc, Mutex};
 
     use crate::{
-        Call, Chain, ChannelKind, Decision, Denied, Metadata, Policy, PolicyState, Provenance,
-        Returned,
+        Call, Chain, ChannelKind, ChannelOpened, Decision, Denied, Event, Metadata, Policy,
+        PolicyState, Provenance, ReturnStatus, Returned,
     };
 
     use super::{DispatchError, Sleeve};
 
     struct RefuseWithOpenChannel;
+
+    struct ObserveOpenRefusal(Arc<Mutex<Vec<ReturnStatus>>>);
+
+    impl Policy for ObserveOpenRefusal {
+        type Frame = ();
+
+        fn observe(&mut self, event: &Event<'_>) {
+            if let Event::Returned(returned) = event {
+                self.0.lock().unwrap().push(returned.status.clone());
+            }
+        }
+
+        fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
+            Decision::Allow(())
+        }
+
+        fn after(&mut self, _: &Call<'_>, (): Self::Frame, _: &Returned) -> Vec<Metadata> {
+            Vec::new()
+        }
+
+        fn before_state_change(&mut self, _: &PolicyState<'_>, _: &ChannelOpened) -> Decision {
+            Decision::Deny(Denied::new("closed", ()))
+        }
+    }
 
     impl Policy for RefuseWithOpenChannel {
         type Frame = ();
@@ -477,6 +514,29 @@ mod tests {
 
         assert!(sleeve.close_channel(7).is_ok());
         assert!(poll_ready(sleeve.dispatch("test:api/run", "run", Vec::new(), async {})).is_ok());
+    }
+
+    #[test]
+    fn channel_open_refusals_are_observable_return_events() {
+        let records = Arc::new(Mutex::new(Vec::new()));
+        let sleeve = Sleeve::new();
+        assert!(
+            sleeve
+                .start(
+                    Chain::new().with(ObserveOpenRefusal(Arc::clone(&records))),
+                    "test".into(),
+                )
+                .is_ok()
+        );
+
+        assert!(matches!(
+            sleeve.open_channel(7, ChannelKind::Stream, 4),
+            Err(DispatchError::Denied(_))
+        ));
+        assert_eq!(
+            &*records.lock().unwrap(),
+            &[ReturnStatus::Denied("closed".into())]
+        );
     }
 
     #[test]

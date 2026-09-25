@@ -76,6 +76,7 @@ fn format_observation(event: &Event<'_>) -> Option<String> {
         }
         Event::HandleDropped(event) => Some(format!("handle dropped {}", event.handle)),
         Event::ChannelClosed(event) => Some(format!("channel closed {}", event.handle)),
+        Event::Returned(event) => Some(format_return(event)),
         _ => None,
     }
 }
