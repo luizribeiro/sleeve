@@ -5,6 +5,7 @@ members = [
   "examples/*",
   "support/benchmark",
   "support/guest-build",
+  "support/http-scenarios",
   "support/policies/*",
 ]
 

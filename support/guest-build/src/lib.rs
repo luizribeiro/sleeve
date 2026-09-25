@@ -35,6 +35,12 @@ pub fn http_bypass() -> &'static Path {
     Path::new(env!("HTTP_BYPASS_COMPONENT"))
 }
 
+/// Returns the path to the plugin containing the shared HTTP scenarios.
+#[must_use]
+pub fn http_scenarios() -> &'static Path {
+    Path::new(env!("HTTP_SCENARIOS_COMPONENT"))
+}
+
 /// Returns the path to the plugin that reads two notes.
 #[must_use]
 pub fn note_summary() -> &'static Path {

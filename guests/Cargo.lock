@@ -141,6 +141,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-scenarios-plugin"
+version = "0.0.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "id-arena"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

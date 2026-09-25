@@ -12,6 +12,7 @@ const GUESTS: &[(&str, &str)] = &[
     ("DENY_SLEEVE_COMPONENT", "deny-sleeve"),
     ("DIRECT_IMPORT_COMPONENT", "direct-import"),
     ("HTTP_BYPASS_COMPONENT", "http-bypass"),
+    ("HTTP_SCENARIOS_COMPONENT", "http-scenarios-plugin"),
     ("NOTE_SUMMARY_COMPONENT", "note-summary"),
     ("PASSTHROUGH_SLEEVE_COMPONENT", "passthrough-sleeve"),
     ("PLATFORM_EXPORT_COMPONENT", "platform-export"),

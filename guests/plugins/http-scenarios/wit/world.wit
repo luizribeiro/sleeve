@@ -1,0 +1,8 @@
+package example:http-scenarios@0.1.0;
+
+world plugin {
+  import example:notes/notes@0.1.0;
+  import wasi:http/types@0.3.0;
+  import wasi:http/client@0.3.0;
+  export run: async func(scenario: u8, authority: string, body-size: u32) -> string;
+}
