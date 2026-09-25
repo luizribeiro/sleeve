@@ -1,0 +1,34 @@
+package sleeve:benchmark-io@0.1.0;
+
+world http-direct {
+  import example:notes/notes@0.1.0;
+  import wasi:http/types@0.3.0;
+  import wasi:http/client@0.3.0;
+  export run: async func(scenario: u8, authority: string, body-size: u32) -> string;
+}
+
+world http-composed {
+  import example:notes/notes@0.1.0;
+  import wasi:http/types@0.3.0;
+  import wasi:http/client@0.3.0;
+  import sleeve:platform/audit@0.1.0;
+  import sleeve:platform/settings@0.1.0;
+  export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
+  export run: async func(scenario: u8, authority: string, body-size: u32) -> string;
+}
+
+world file-direct {
+  import wasi:filesystem/types@0.3.0;
+  import wasi:filesystem/preopens@0.3.0;
+  export run: async func(scenario: u8) -> string;
+}
+
+world file-composed {
+  import wasi:filesystem/types@0.3.0;
+  import wasi:filesystem/preopens@0.3.0;
+  import sleeve:platform/settings@0.1.0;
+  export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
+  export run: async func(scenario: u8) -> string;
+}

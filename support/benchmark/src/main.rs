@@ -11,6 +11,8 @@ use wasm_component_middleware::{
 use wasmtime::component::{Accessor, Component, HasData, Linker};
 use wasmtime::{Config, Engine, Store};
 
+mod io_benchmarks;
+
 const CALLS: u32 = 100_000;
 const RUNS: usize = 5;
 
@@ -169,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
     println!("host-layer,{:.2}", median(&host_layer));
     println!("trace-sleeve,{:.2}", median(&traced));
     println!("external-trace-policy,{:.2}", median(&external_traced));
+    io_benchmarks::run(&engine).await?;
     Ok(())
 }
 

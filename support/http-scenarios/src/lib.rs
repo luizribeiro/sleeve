@@ -4,7 +4,7 @@
 #![warn(missing_docs)]
 
 use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -103,6 +103,7 @@ pub fn cases() -> Result<Vec<Case>, serde_json::Error> {
 /// A loopback HTTP server used by tests and examples.
 pub struct LocalServer {
     authority: String,
+    wake_address: SocketAddr,
     stopping: Arc<AtomicBool>,
     errors: Receiver<String>,
     thread: Option<JoinHandle<()>>,
@@ -116,14 +117,15 @@ impl LocalServer {
     /// Returns an I/O error when the listener cannot be created or configured.
     pub fn start() -> io::Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
-        listener.set_nonblocking(true)?;
-        let port = listener.local_addr()?.port();
+        let wake_address = listener.local_addr()?;
+        let port = wake_address.port();
         let stopping = Arc::new(AtomicBool::new(false));
         let thread_stopping = Arc::clone(&stopping);
         let (error_sender, errors) = mpsc::channel();
         let thread = thread::spawn(move || serve(&listener, &thread_stopping, &error_sender));
         Ok(Self {
             authority: format!("localhost:{port}"),
+            wake_address,
             stopping,
             errors,
             thread: Some(thread),
@@ -174,6 +176,7 @@ impl LocalServer {
 impl Drop for LocalServer {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Relaxed);
+        let _woken = TcpStream::connect(self.wake_address);
         if let Some(thread) = self.thread.take() {
             let _joined = thread.join();
         }
@@ -181,43 +184,24 @@ impl Drop for LocalServer {
 }
 
 fn serve(listener: &TcpListener, stopping: &AtomicBool, errors: &Sender<String>) {
-    let mut connections = Vec::new();
-    while !stopping.load(Ordering::Relaxed) {
+    loop {
         match listener.accept() {
             Ok((stream, _)) => {
+                if stopping.load(Ordering::Relaxed) {
+                    return;
+                }
                 if let Err(error) = stream.set_nonblocking(false) {
                     report(errors, "configure accepted connection", &error);
                     continue;
                 }
-                let connection_errors = errors.clone();
-                connections.push(thread::spawn(move || {
-                    if let Err(error) = respond(stream) {
-                        report(&connection_errors, "serve connection", &error);
-                    }
-                }));
-            }
-            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                thread::sleep(Duration::from_millis(2));
+                if let Err(error) = respond(stream) {
+                    report(errors, "serve connection", &error);
+                }
             }
             Err(error) => {
                 report(errors, "accept connection", &error);
                 return;
             }
-        }
-        reap_finished(&mut connections, errors);
-    }
-    for connection in connections {
-        if connection.join().is_err() {
-            report_message(errors, "connection worker panicked");
-        }
-    }
-}
-
-fn reap_finished(connections: &mut Vec<JoinHandle<()>>, errors: &Sender<String>) {
-    while let Some(index) = connections.iter().position(JoinHandle::is_finished) {
-        let connection = connections.swap_remove(index);
-        if connection.join().is_err() {
-            report_message(errors, "connection worker panicked");
         }
     }
 }

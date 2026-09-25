@@ -5,7 +5,7 @@
 
 extern crate alloc;
 
-use alloc::{string::String, string::ToString, vec::Vec};
+use alloc::{string::String, string::ToString, vec, vec::Vec};
 use bindings::wasi::filesystem::types::{
     Descriptor, DescriptorFlags, ErrorCode, OpenFlags, PathFlags,
 };
@@ -39,9 +39,22 @@ impl bindings::Guest for Component {
             7 => write_intent(&secret, &public, OpenFlags::TRUNCATE, DescriptorFlags::READ).await,
             8 => write_intent(&secret, &public, OpenFlags::empty(), DescriptorFlags::WRITE).await,
             9 => raise_after_writer_close_before_completion(&public, &secret).await,
+            10 => write_benchmark(&public).await,
+            11 => read_benchmark(&public).await,
             _ => "unknown scenario".into(),
         }
     }
+}
+
+async fn write_benchmark(public: &Descriptor) -> String {
+    const SIZE: usize = 1024 * 1024;
+    let file = create(public, "benchmark.bin").await;
+    write(&file, &vec![b'x'; SIZE]).await;
+    SIZE.to_string()
+}
+
+async fn read_benchmark(public: &Descriptor) -> String {
+    read(public, "benchmark.bin").await.len().to_string()
 }
 
 fn preopens() -> (Descriptor, Descriptor) {
