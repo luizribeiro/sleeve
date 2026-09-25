@@ -9,6 +9,10 @@ version = "0.0.0"
 publish = false
 
 [workspace.dependencies]
+spin = { version = "0.10", default-features = false, features = [
+  "mutex",
+  "spin_mutex",
+] }
 wit-bindgen = { version = "0.62", features = ["async"] }
 
 [workspace.lints.rust]

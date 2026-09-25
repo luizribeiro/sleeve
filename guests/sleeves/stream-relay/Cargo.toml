@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 sleeve-core = { path = "../../../crates/sleeve-core" }
+spin.workspace = true
 wit-bindgen = { workspace = true, features = ["async-spawn"] }
 
 [lints]

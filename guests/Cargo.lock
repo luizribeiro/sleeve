@@ -379,6 +379,7 @@ name = "stream-relay-sleeve"
 version = "0.0.0"
 dependencies = [
  "sleeve-core",
+ "spin",
  "wit-bindgen",
 ]
 

@@ -13,3 +13,8 @@ interface lifecycle {
   start: func(invocation: string);
   end: func(invocation: string, trapped: bool);
 }
+
+interface anchor {
+  run: async func() -> u32;
+  stop: async func();
+}
