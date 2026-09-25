@@ -235,6 +235,94 @@ macro_rules! export_http_sleeve {
                 .map_err(|_| ErrorCode::HttpRequestUriInvalid)
         }
 
+        async fn buffer_request(
+            mut parts: RequestParts,
+        ) -> Result<
+            (
+                ImportedRequest,
+                ::wit_bindgen::FutureReader<Result<(), ErrorCode>>,
+                ::wit_bindgen::FutureWriter<Result<(), ErrorCode>>,
+                u64,
+            ),
+            ErrorCode,
+        > {
+            let limit = $bindings::sleeve::platform::settings::request_body_limit();
+            let had_body = parts.body.is_some();
+            let mut body = ::alloc::vec::Vec::new();
+            if let Some(mut stream) = parts.body.take() {
+                while let Some(byte) = stream.next().await {
+                    let size = u64::try_from(body.len())
+                        .unwrap_or(u64::MAX)
+                        .saturating_add(1);
+                    if size > limit {
+                        let writer = parts.result_writer;
+                        let result_id = parts.result_id;
+                        ::wit_bindgen::spawn_local(async move {
+                            let _write = writer
+                                .write(Err(ErrorCode::HttpRequestBodySize(Some(limit))))
+                                .await;
+                            observe_drop(result_id);
+                        });
+                        return Err(ErrorCode::HttpRequestBodySize(Some(limit)));
+                    }
+                    body.push(byte);
+                }
+                parts.channels.close_body();
+            }
+            let trailers = parts.trailers.await?;
+            parts.channels.close_trailers();
+            let trailers = trailers.map(|fields| fields.into_inner::<WrappedFields>().take());
+
+            let body = if had_body {
+                let (mut writer, reader) = $bindings::wit_stream::new();
+                ::wit_bindgen::spawn_local(async move {
+                    let _remaining = writer.write_all(body).await;
+                    drop(writer);
+                });
+                Some(reader)
+            } else {
+                None
+            };
+            let (trailers_writer, trailers_reader) =
+                $bindings::wit_future::new(|| Ok(None));
+            if let Some(trailers) = trailers {
+                ::wit_bindgen::spawn_local(async move {
+                    let _write = trailers_writer.write(Ok(Some(trailers))).await;
+                });
+            } else {
+                drop(trailers_writer);
+            }
+            let (request, result) = $bindings::wasi::http::types::Request::new(
+                parts.headers,
+                body,
+                trailers_reader,
+                parts.options,
+            );
+            request
+                .set_method(&import_method(parts.method))
+                .map_err(|()| ErrorCode::HttpRequestMethodInvalid)?;
+            request
+                .set_path_with_query(parts.path.as_deref())
+                .map_err(|()| ErrorCode::HttpRequestUriInvalid)?;
+            request
+                .set_scheme(parts.scheme.as_ref().map(import_scheme).as_ref())
+                .map_err(|()| ErrorCode::HttpRequestUriInvalid)?;
+            request
+                .set_authority(parts.authority.as_deref())
+                .map_err(|()| ErrorCode::HttpRequestUriInvalid)?;
+            Ok((request, result, parts.result_writer, parts.result_id))
+        }
+
+        async fn forward_request(parts: RequestParts) -> Result<ImportedResponse, ErrorCode> {
+            let (request, transmission, result_writer, result_id) = buffer_request(parts).await?;
+            ::wit_bindgen::spawn_local(async move {
+                let result = transmission.await;
+                let _write = result_writer.write(result).await;
+                observe_drop(result_id);
+            });
+            $bindings::wasi::http::client::send(request).await
+        }
+
         impl $bindings::exports::wasi::http::types::GuestFields for WrappedFields {
             fn new() -> Self {
                 let id = SLEEVE.next_handle();
