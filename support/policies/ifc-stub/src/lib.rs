@@ -10,10 +10,14 @@ use alloc::collections::BTreeSet;
 use alloc::string::String;
 use alloc::vec::Vec;
 
-use sleeve_core::{Call, ChannelOpened, Decision, Denied, Metadata, Policy, PolicyState, Returned};
+use sleeve_core::{
+    Call, ChannelOpened, Decision, Denied, Metadata, Policy, PolicyState, Returned, Trap,
+};
 
 const NOTES: &str = "example:notes/notes@0.1.0";
 const HTTP_CLIENT: &str = "wasi:http/client@0.3.0";
+const FILESYSTEM_PREOPENS: &str = "wasi:filesystem/preopens@0.3.0";
+const FILESYSTEM_TYPES: &str = "wasi:filesystem/types@0.3.0";
 
 /// The two secrecy levels modeled by this test policy.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -41,12 +45,32 @@ pub enum Refusal {
     SecretToPublic,
     /// A public writable channel cannot open after a secret read.
     ChannelAtSecret,
+    /// The host supplied a preopen label this policy does not recognize.
+    UnknownPreopenLabel,
+}
+
+#[derive(Clone, Copy)]
+#[doc(hidden)]
+pub enum FileLabel {
+    Known(Label),
+    Unknown,
 }
 
 /// Enforces a public/secret lattice and a normalized HTTP-origin allowlist.
 pub struct Ifc {
     current: Label,
     allowed_origins: BTreeSet<String>,
+}
+
+/// Policy-private state retained between call hooks.
+#[doc(hidden)]
+pub enum Frame {
+    /// No returned handle needs a label.
+    None,
+    /// Labels returned for preopen descriptors in order.
+    Preopens(Vec<FileLabel>),
+    /// A label inherited from a parent descriptor.
+    Derived(Option<FileLabel>),
 }
 
 impl Ifc {
@@ -64,26 +88,58 @@ impl Ifc {
         self.current
     }
 
-    fn refuse(refusal: Refusal) -> Decision {
+    fn denial(refusal: Refusal) -> Denied {
         let message = match refusal {
             Refusal::CloseChannel(handle) => alloc::format!("close channel {handle} first"),
             Refusal::OriginNotAllowed => "origin is not allowlisted".into(),
             Refusal::SecretToPublic => "secret data cannot flow to a public origin".into(),
             Refusal::ChannelAtSecret => "cannot open a public channel at secret".into(),
+            Refusal::UnknownPreopenLabel => "preopen label is not recognized".into(),
         };
-        Decision::Deny(Denied::new(message, refusal))
+        Denied::new(message, refusal)
+    }
+
+    fn refuse<F>(refusal: Refusal) -> Decision<F> {
+        Decision::Deny(Self::denial(refusal))
+    }
+
+    fn raise(&mut self, state: &PolicyState<'_>, label: Label) -> Decision<Frame> {
+        if label == Label::Secret && self.current == Label::Public {
+            if let Some(channel) = state.open_channels().find(|channel| {
+                channel
+                    .sink
+                    .and_then(|sink| state.metadata::<FileLabel>(sink))
+                    .is_none_or(|label| matches!(label, FileLabel::Known(Label::Public)))
+            }) {
+                return Decision::Deny(Self::denial(Refusal::CloseChannel(channel.handle)));
+            }
+            self.current = Label::Secret;
+        }
+        Decision::Allow(Frame::None)
+    }
+
+    fn label(designator: &str) -> FileLabel {
+        match designator {
+            "public" => FileLabel::Known(Label::Public),
+            "secret" => FileLabel::Known(Label::Secret),
+            _ => FileLabel::Unknown,
+        }
+    }
+
+    fn handle_label(state: &PolicyState<'_>, call: &Call<'_>) -> Option<FileLabel> {
+        call.handles
+            .first()
+            .and_then(|handle| state.metadata::<FileLabel>(*handle))
+            .copied()
     }
 }
 
 impl Policy for Ifc {
-    type Frame = ();
+    type Frame = Frame;
 
     fn before(&mut self, state: &PolicyState<'_>, call: &Call<'_>) -> Decision<Self::Frame> {
         if call.interface == NOTES && call.function == "read" {
-            if let Some(channel) = state.open_channels().next() {
-                return Self::refuse(Refusal::CloseChannel(channel.handle));
-            }
-            self.current = Label::Secret;
+            return self.raise(state, Label::Secret);
         }
         if call.interface == HTTP_CLIENT && call.function == "send" {
             let origin = call
@@ -98,11 +154,53 @@ impl Policy for Ifc {
                 return Self::refuse(Refusal::SecretToPublic);
             }
         }
-        Decision::Allow(())
+        if call.interface == FILESYSTEM_PREOPENS && call.function == "get-directories" {
+            let labels = call
+                .designators
+                .iter()
+                .filter(|designator| designator.key == "label")
+                .map(|designator| Self::label(&designator.value))
+                .collect();
+            return Decision::Allow(Frame::Preopens(labels));
+        }
+        if call.interface == FILESYSTEM_TYPES {
+            let Some(FileLabel::Known(label)) = Self::handle_label(state, call) else {
+                return Self::refuse(Refusal::UnknownPreopenLabel);
+            };
+            return match call.function.as_ref() {
+                "[method]descriptor.open-at" => match self.raise(state, label) {
+                    Decision::Allow(_) => {
+                        Decision::Allow(Frame::Derived(Some(FileLabel::Known(label))))
+                    }
+                    Decision::Deny(denied) => Decision::Deny(denied),
+                    Decision::Trap(trap) => Decision::Trap(trap),
+                    _ => Decision::Trap(Trap::new("unsupported policy decision")),
+                },
+                "[method]descriptor.stat" | "[method]descriptor.read-via-stream" => {
+                    self.raise(state, label)
+                }
+                _ => Decision::Allow(Frame::None),
+            };
+        }
+        Decision::Allow(Frame::None)
     }
 
-    fn after(&mut self, _: &Call<'_>, (): Self::Frame, _: &Returned) -> Vec<Metadata> {
-        Vec::new()
+    fn after(&mut self, _: &Call<'_>, frame: Self::Frame, returned: &Returned) -> Vec<Metadata> {
+        match frame {
+            Frame::None => Vec::new(),
+            Frame::Preopens(labels) => returned
+                .handles
+                .iter()
+                .zip(labels)
+                .map(|(handle, label)| Metadata::new(handle.id, label))
+                .collect(),
+            Frame::Derived(label) => returned
+                .handles
+                .first()
+                .zip(label)
+                .map(|(handle, label)| alloc::vec![Metadata::new(handle.id, label)])
+                .unwrap_or_default(),
+        }
     }
 
     fn before_state_change(&mut self, _: &PolicyState<'_>, _: &ChannelOpened) -> Decision {
@@ -119,7 +217,9 @@ mod tests {
     extern crate std;
 
     use alloc::vec;
-    use sleeve_core::{ChannelKind, Designator};
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+    use sleeve_core::{Chain, ChannelKind, Designator, DispatchError, ProducedHandle, Sleeve};
 
     use super::*;
 
@@ -131,11 +231,69 @@ mod tests {
         Call::new(2, HTTP_CLIENT, "send").with_designators(vec![Designator::new("origin", origin)])
     }
 
-    fn assert_refusal(decision: Decision, expected: &Refusal) {
+    fn assert_refusal<F>(decision: Decision<F>, expected: &Refusal) {
         let Decision::Deny(denied) = decision else {
             panic!("expected a refusal")
         };
         assert_eq!(denied.downcast_ref::<Refusal>(), Some(expected));
+    }
+
+    fn poll_ready<T>(future: impl Future<Output = T>) -> T {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(value) => value,
+            Poll::Pending => panic!("test future should be immediately ready"),
+        }
+    }
+
+    fn filesystem_sleeve_with_first_label(label: &'static str) -> Sleeve {
+        let sleeve = Sleeve::new();
+        sleeve
+            .start(Chain::new().with(Ifc::new([])), "files".into())
+            .unwrap();
+        sleeve
+            .dispatch_sync_handles(
+                FILESYSTEM_PREOPENS,
+                "get-directories",
+                vec![
+                    Designator::new("name", "public"),
+                    Designator::new("label", label),
+                    Designator::new("name", "secret"),
+                    Designator::new("label", "secret"),
+                ],
+                Vec::new(),
+                |call_id| {
+                    (
+                        (),
+                        vec![
+                            ProducedHandle::from_call(1, "descriptor", call_id),
+                            ProducedHandle::from_call(2, "descriptor", call_id),
+                        ],
+                    )
+                },
+            )
+            .unwrap();
+        sleeve
+    }
+
+    fn filesystem_sleeve() -> Sleeve {
+        filesystem_sleeve_with_first_label("public")
+    }
+
+    fn file_call(
+        sleeve: &Sleeve,
+        function: &'static str,
+        handle: u64,
+    ) -> Result<Result<(), ()>, DispatchError> {
+        poll_ready(sleeve.dispatch_result(
+            FILESYSTEM_TYPES,
+            function,
+            Vec::new(),
+            vec![handle],
+            Vec::new(),
+            |_| async { Ok(()) },
+        ))
     }
 
     #[test]
@@ -143,7 +301,7 @@ mod tests {
         let mut policy = Ifc::new(["http://example.com:80".into()]);
         assert!(matches!(
             policy.before(&PolicyState::new(&[]), &notes()),
-            Decision::Allow(())
+            Decision::Allow(_)
         ));
         assert_eq!(policy.current_label(), Label::Secret);
         assert_refusal(
@@ -157,11 +315,11 @@ mod tests {
         let mut policy = Ifc::new(["http://example.com:80".into()]);
         assert!(matches!(
             policy.before(&PolicyState::new(&[]), &send("http://example.com:80"),),
-            Decision::Allow(())
+            Decision::Allow(_)
         ));
         assert!(matches!(
             policy.before(&PolicyState::new(&[]), &notes()),
-            Decision::Allow(())
+            Decision::Allow(_)
         ));
     }
 
@@ -181,7 +339,7 @@ mod tests {
         let mut policy = Ifc::new([]);
         assert!(matches!(
             policy.before(&PolicyState::new(&[]), &notes()),
-            Decision::Allow(())
+            Decision::Allow(_)
         ));
         assert_refusal(
             policy.before_state_change(
@@ -199,5 +357,45 @@ mod tests {
             policy.before(&PolicyState::new(&[]), &send("http://elsewhere.example:80")),
             &Refusal::OriginNotAllowed,
         );
+    }
+
+    #[test]
+    fn public_writer_refuses_secret_stat_and_stream_read() {
+        for function in [
+            "[method]descriptor.stat",
+            "[method]descriptor.read-via-stream",
+        ] {
+            let sleeve = filesystem_sleeve();
+            sleeve
+                .open_channel_to(9, ChannelKind::Stream, 2, 1)
+                .unwrap();
+            let error = file_call(&sleeve, function, 2).unwrap_err();
+            let DispatchError::Denied(denied) = error else {
+                panic!("expected a policy refusal")
+            };
+            assert_eq!(
+                denied.downcast_ref::<Refusal>(),
+                Some(&Refusal::CloseChannel(9))
+            );
+        }
+    }
+
+    #[test]
+    fn unknown_preopen_label_refuses_every_descriptor_call() {
+        for function in [
+            "[method]descriptor.stat",
+            "[method]descriptor.read-via-stream",
+            "[method]descriptor.write-via-stream",
+        ] {
+            let sleeve = filesystem_sleeve_with_first_label("internal");
+            let error = file_call(&sleeve, function, 1).unwrap_err();
+            let DispatchError::Denied(denied) = error else {
+                panic!("expected a policy refusal")
+            };
+            assert_eq!(
+                denied.downcast_ref::<Refusal>(),
+                Some(&Refusal::UnknownPreopenLabel)
+            );
+        }
     }
 }
