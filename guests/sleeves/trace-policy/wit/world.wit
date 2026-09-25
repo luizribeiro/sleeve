@@ -1,0 +1,6 @@
+package sleeve:trace-policy@0.1.0;
+
+world policy {
+  import sleeve:platform/audit@0.1.0;
+  export sleeve:policy/hooks@0.1.0;
+}

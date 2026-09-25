@@ -35,6 +35,12 @@ pub fn direct_import() -> &'static Path {
     Path::new(env!("DIRECT_IMPORT_COMPONENT"))
 }
 
+/// Returns the notes sleeve that imports its policy as a component interface.
+#[must_use]
+pub fn external_policy_sleeve() -> &'static Path {
+    Path::new(env!("EXTERNAL_POLICY_SLEEVE_COMPONENT"))
+}
+
 /// Returns the path to the plugin that imports an unwrapped filesystem method.
 #[must_use]
 pub fn filesystem_bypass() -> &'static Path {
@@ -129,6 +135,12 @@ pub fn stream_relay_sleeve() -> &'static Path {
 #[must_use]
 pub fn trace_sleeve() -> &'static Path {
     Path::new(env!("TRACE_SLEEVE_COMPONENT"))
+}
+
+/// Returns the independently composed tracing policy.
+#[must_use]
+pub fn trace_policy() -> &'static Path {
+    Path::new(env!("TRACE_POLICY_COMPONENT"))
 }
 
 /// Returns the path to the notes and HTTP sleeve with IFC enabled.

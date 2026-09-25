@@ -1375,6 +1375,7 @@ dependencies = [
  "guest-build",
  "sleeve-host",
  "tokio",
+ "wac-graph",
  "wasm-component-middleware",
  "wasmtime",
 ]

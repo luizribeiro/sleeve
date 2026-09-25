@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use wac_graph::{CompositionGraph, EncodeOptions, types::Package};
 use wasm_component_middleware::{
     Call, Chain, Completion, Denied, Direction, InvocationContext, Layer, MiddlewareCtx,
     MiddlewareView, Outcome,
@@ -149,20 +150,56 @@ async fn main() -> anyhow::Result<()> {
     let direct_component = Component::from_binary(&engine, &plugin).map_err(message)?;
     let passthrough = std::fs::read(guest_build::passthrough_sleeve())?;
     let trace = std::fs::read(guest_build::trace_sleeve())?;
+    let external_sleeve = std::fs::read(guest_build::external_policy_sleeve())?;
+    let trace_policy = std::fs::read(guest_build::trace_policy())?;
+    let external_trace = compose_policy(&external_sleeve, &trace_policy)?;
     let passthrough = composed_component(&engine, &plugin, &passthrough)?;
     let trace = composed_component(&engine, &plugin, &trace)?;
+    let external_trace = composed_component(&engine, &plugin, &external_trace)?;
 
     let direct = direct_runs(&engine, &direct_component).await?;
     let sleeve = composed_runs(&engine, &passthrough).await?;
     let host_layer = layered_runs(&engine, &direct_component).await?;
     let traced = composed_runs(&engine, &trace).await?;
+    let external_traced = composed_runs(&engine, &external_trace).await?;
 
     println!("setup,median_ns_per_call");
     println!("direct,{:.2}", median(&direct));
     println!("passthrough-sleeve,{:.2}", median(&sleeve));
     println!("host-layer,{:.2}", median(&host_layer));
     println!("trace-sleeve,{:.2}", median(&traced));
+    println!("external-trace-policy,{:.2}", median(&external_traced));
     Ok(())
+}
+
+fn compose_policy(sleeve: &[u8], policy: &[u8]) -> anyhow::Result<Vec<u8>> {
+    let mut graph = CompositionGraph::new();
+    let sleeve =
+        Package::from_bytes("sleeve:external", None, sleeve, graph.types_mut()).map_err(message)?;
+    let policy =
+        Package::from_bytes("policy:trace", None, policy, graph.types_mut()).map_err(message)?;
+    let exports = graph.types()[sleeve.ty()]
+        .exports
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+    let sleeve_id = graph.register_package(sleeve).map_err(message)?;
+    let policy_id = graph.register_package(policy).map_err(message)?;
+    let policy = graph.instantiate(policy_id);
+    let sleeve = graph.instantiate(sleeve_id);
+    let hooks = graph
+        .alias_instance_export(policy, "sleeve:policy/hooks@0.1.0")
+        .map_err(message)?;
+    graph
+        .set_instantiation_argument(sleeve, "sleeve:policy/hooks@0.1.0", hooks)
+        .map_err(message)?;
+    for name in exports {
+        let export = graph
+            .alias_instance_export(sleeve, &name)
+            .map_err(message)?;
+        graph.export(export, &name).map_err(message)?;
+    }
+    graph.encode(EncodeOptions::default()).map_err(message)
 }
 
 fn engine() -> anyhow::Result<Engine> {
@@ -257,4 +294,43 @@ fn median(durations: &[Duration]) -> f64 {
 
 fn message(error: impl std::fmt::Display) -> anyhow::Error {
     anyhow::anyhow!(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compose_policy;
+
+    #[tokio::test]
+    async fn external_trace_policy_matches_the_compiled_policy() {
+        let sleeve = std::fs::read(guest_build::external_policy_sleeve()).unwrap();
+        let policy = std::fs::read(guest_build::trace_policy()).unwrap();
+        let sleeve = compose_policy(&sleeve, &policy).unwrap();
+        let plugin = std::fs::read(guest_build::note_summary()).unwrap();
+        let host = sleeve_host::Host::new(
+            [
+                ("first".into(), "Bring tea".into()),
+                ("second".into(), "Book the room".into()),
+            ],
+            sleeve_host::sleeve_sha256(&sleeve),
+        )
+        .unwrap();
+
+        let result = host
+            .summarize(&plugin, &sleeve, "daily", "first", "second")
+            .await
+            .unwrap();
+
+        assert_eq!(result.value, "Bring tea; Book the room");
+        assert_eq!(
+            result.audit,
+            [
+                "invocation start daily",
+                "call 1 example:notes/notes@0.1.0.read name=first",
+                "return 1 ok",
+                "call 2 example:notes/notes@0.1.0.read name=second",
+                "return 2 ok",
+                "invocation end daily returned",
+            ]
+        );
+    }
 }

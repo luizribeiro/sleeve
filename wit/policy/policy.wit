@@ -1,0 +1,83 @@
+package sleeve:policy@0.1.0;
+
+interface hooks {
+  record designator {
+    key: string,
+    value: string,
+  }
+
+  record call {
+    id: u64,
+    interface-name: string,
+    function: string,
+    designators: list<designator>,
+    handles: list<u64>,
+  }
+
+  variant provenance {
+    call(u64),
+    parent(u64),
+  }
+
+  record produced-handle {
+    id: u64,
+    resource-type: string,
+    provenance: provenance,
+  }
+
+  variant return-status {
+    ok,
+    error(string),
+    denied(string),
+    trapped(string),
+  }
+
+  record returned {
+    call-id: u64,
+    status: return-status,
+    handles: list<produced-handle>,
+  }
+
+  enum channel-kind {
+    byte-stream,
+    future-value,
+    other,
+  }
+
+  record channel-opened {
+    handle: u64,
+    kind: channel-kind,
+    call-id: u64,
+    sink: option<u64>,
+  }
+
+  variant invocation-outcome {
+    returned,
+    trapped,
+  }
+
+  variant event {
+    invocation-started(tuple<string>),
+    invocation-ended(tuple<string, invocation-outcome>),
+    call(call),
+    returned(returned),
+    handle-dropped(u64),
+    channel-opened(channel-opened),
+    channel-closed(u64),
+  }
+
+  variant decision {
+    permit(u64),
+    deny(string),
+    trap(string),
+  }
+
+  record metadata {
+    handle: u64,
+    value: list<u8>,
+  }
+
+  before: func(open-channels: list<channel-opened>, event: event) -> decision;
+  after: func(call: call, frame: u64, returned: returned) -> list<metadata>;
+  observe: func(event: event);
+}
