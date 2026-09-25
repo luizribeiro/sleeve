@@ -1,0 +1,28 @@
+package wasi:filesystem@0.3.0;
+
+interface types {
+  variant descriptor-type {
+    block-device,
+    character-device,
+    directory,
+    fifo,
+    symbolic-link,
+    regular-file,
+    socket,
+    other(option<string>),
+  }
+
+  variant error-code {
+    access,
+  }
+
+  resource descriptor {
+    get-type: async func() -> result<descriptor-type, error-code>;
+  }
+}
+
+interface preopens {
+  use types.{descriptor};
+
+  get-directories: func() -> list<tuple<descriptor, string>>;
+}

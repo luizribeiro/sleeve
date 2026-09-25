@@ -4,7 +4,10 @@ use std::fmt::{self, Display};
 use std::ops::Range;
 
 use sha2::{Digest, Sha256};
-use wac_graph::{CompositionGraph, EncodeOptions, NodeId, types::Package};
+use wac_graph::{
+    CompositionGraph, EncodeOptions, NodeId,
+    types::{ItemKind, Package},
+};
 use wasmparser::{
     ComponentAlias, ComponentExternalKind, ComponentInstance, ComponentOuterAliasKind,
     ComponentTypeRef, Parser, Payload,
@@ -14,6 +17,15 @@ const PLUGIN_INTERFACES: &[&str] = &[
     "example:notes/notes@0.1.0",
     "wasi:http/client@0.3.0",
     "wasi:http/types@0.3.0",
+    "wasi:filesystem/preopens@0.3.0",
+    "wasi:filesystem/types@0.3.0",
+];
+
+const FILESYSTEM_TYPE_FUNCTIONS: &[&str] = &[
+    "[method]descriptor.read-via-stream",
+    "[method]descriptor.write-via-stream",
+    "[method]descriptor.stat",
+    "[method]descriptor.open-at",
 ];
 
 enum InstanceOrigin {
@@ -386,6 +398,7 @@ where
         .map_err(invalid)?;
     let plugin = Package::from_bytes("plugin:untrusted", None, plugin_bytes, graph.types_mut())
         .map_err(invalid)?;
+    verify_plugin_functions(graph.types(), plugin.ty())?;
     let plugin_imports = graph.types()[plugin.ty()]
         .imports
         .keys()
@@ -448,6 +461,35 @@ where
     }
 
     graph.encode(EncodeOptions::default()).map_err(invalid)
+}
+
+fn verify_plugin_functions(
+    types: &wac_graph::types::Types,
+    plugin: wac_graph::types::WorldId,
+) -> Result<(), LoadError> {
+    for (interface_name, kind) in &types[plugin].imports {
+        let ItemKind::Instance(interface) = kind else {
+            continue;
+        };
+        let allowed = match interface_name.as_str() {
+            "wasi:filesystem/types@0.3.0" => Some(FILESYSTEM_TYPE_FUNCTIONS),
+            "wasi:filesystem/preopens@0.3.0" => Some(&["get-directories"][..]),
+            _ => None,
+        };
+        let Some(allowed) = allowed else {
+            continue;
+        };
+        if let Some(function) = types[*interface].exports.iter().find_map(|(name, kind)| {
+            matches!(kind, ItemKind::Func(_))
+                .then_some(name)
+                .filter(|name| !allowed.contains(&name.as_str()))
+        }) {
+            return Err(LoadError::UnsatisfiedImport(format!(
+                "{interface_name}.{function}"
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Verifies that an encoded composition routes the embedded plugin through aliases.
