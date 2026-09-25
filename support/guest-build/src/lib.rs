@@ -29,6 +29,30 @@ pub fn direct_import() -> &'static Path {
     Path::new(env!("DIRECT_IMPORT_COMPONENT"))
 }
 
+/// Returns the path to the plugin that imports an unwrapped filesystem method.
+#[must_use]
+pub fn filesystem_bypass() -> &'static Path {
+    Path::new(env!("FILESYSTEM_BYPASS_COMPONENT"))
+}
+
+/// Returns the plugin generated from Wasmtime's upstream p3 filesystem WIT.
+#[must_use]
+pub fn filesystem_upstream() -> &'static Path {
+    Path::new(env!("FILESYSTEM_UPSTREAM_COMPONENT"))
+}
+
+/// Returns the path to the plugin containing the shared filesystem scenarios.
+#[must_use]
+pub fn file_scenarios() -> &'static Path {
+    Path::new(env!("FILE_SCENARIOS_COMPONENT"))
+}
+
+/// Returns the path to the filesystem sleeve with IFC enabled.
+#[must_use]
+pub fn file_ifc_sleeve() -> &'static Path {
+    Path::new(env!("FILE_IFC_SLEEVE_COMPONENT"))
+}
+
 /// Returns the path to the plugin that imports an unwrapped HTTP interface.
 #[must_use]
 pub fn http_bypass() -> &'static Path {
@@ -99,6 +123,12 @@ pub fn ifc_sleeve() -> &'static Path {
 #[must_use]
 pub fn trace_ifc_sleeve() -> &'static Path {
     Path::new(env!("TRACE_IFC_SLEEVE_COMPONENT"))
+}
+
+/// Returns the path to the filesystem sleeve with tracing and IFC enabled.
+#[must_use]
+pub fn trace_file_ifc_sleeve() -> &'static Path {
+    Path::new(env!("TRACE_FILE_IFC_SLEEVE_COMPONENT"))
 }
 
 /// Returns the path to the plugin that traps after reading a note.

@@ -998,3 +998,43 @@ impl FileHost {
 fn anyhow_message(error: impl std::fmt::Display) -> anyhow::Error {
     anyhow::anyhow!(error.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn writer_close_allows_raise_while_completion_is_pending() {
+        let temporary = tempfile::tempdir().unwrap();
+        let public = temporary.path().join("public");
+        let secret = temporary.path().join("secret");
+        std::fs::create_dir_all(&public).unwrap();
+        std::fs::create_dir_all(&secret).unwrap();
+        std::fs::write(secret.join("note.txt"), "classified").unwrap();
+
+        let sleeve = std::fs::read(guest_build::file_ifc_sleeve()).unwrap();
+        let plugin = std::fs::read(guest_build::file_scenarios()).unwrap();
+        let mut host = FileHost::new(
+            crate::sleeve_sha256(&sleeve),
+            [
+                FilePreopen::new(&public, "public", "public"),
+                FilePreopen::new(&secret, "secret", "secret"),
+            ],
+        )
+        .unwrap();
+        host.hold_file_completions = true;
+
+        let attempt = host
+            .run(&plugin, &sleeve, "pending-completion", 9)
+            .await
+            .unwrap();
+        assert_eq!(
+            attempt.value.as_deref(),
+            Ok("raise allowed while completion pending")
+        );
+        assert_eq!(
+            std::fs::metadata(public.join("pending.txt")).unwrap().len(),
+            4 * 64 * 1024
+        );
+    }
+}

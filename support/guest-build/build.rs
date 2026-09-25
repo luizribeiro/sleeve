@@ -11,6 +11,10 @@ const GUESTS: &[(&str, &str)] = &[
     ("COUNTING_SLEEVE_COMPONENT", "counting-sleeve"),
     ("DENY_SLEEVE_COMPONENT", "deny-sleeve"),
     ("DIRECT_IMPORT_COMPONENT", "direct-import"),
+    ("FILESYSTEM_BYPASS_COMPONENT", "filesystem-bypass"),
+    ("FILESYSTEM_UPSTREAM_COMPONENT", "filesystem-upstream"),
+    ("FILE_SCENARIOS_COMPONENT", "file-scenarios-plugin"),
+    ("FILE_IFC_SLEEVE_COMPONENT", "file-ifc-sleeve"),
     ("HTTP_BYPASS_COMPONENT", "http-bypass"),
     ("HTTP_SCENARIOS_COMPONENT", "http-scenarios-plugin"),
     ("NOTE_SUMMARY_COMPONENT", "note-summary"),
@@ -24,6 +28,7 @@ const GUESTS: &[(&str, &str)] = &[
     ("TRACE_SLEEVE_COMPONENT", "trace-sleeve"),
     ("IFC_SLEEVE_COMPONENT", "ifc-sleeve"),
     ("TRACE_IFC_SLEEVE_COMPONENT", "trace-ifc-sleeve"),
+    ("TRACE_FILE_IFC_SLEEVE_COMPONENT", "trace-file-ifc-sleeve"),
     ("TRAP_AFTER_READ_COMPONENT", "trap-after-read"),
 ];
 

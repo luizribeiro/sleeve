@@ -5,6 +5,7 @@ members = [
   "examples/*",
   "support/benchmark",
   "support/guest-build",
+  "support/file-scenarios",
   "support/http-scenarios",
   "support/policies/*",
 ]
@@ -19,12 +20,14 @@ publish = false
 
 [workspace.dependencies]
 anyhow = "1"
+serde_json = "1"
 sha2 = "0.10"
 spin = { version = "0.10", default-features = false, features = [
   "mutex",
   "spin_mutex",
 ] }
 tokio = { version = "1", features = ["macros", "rt"] }
+tempfile = "3"
 wac-graph = "0.11"
 wasmparser = "0.258"
 wasmtime = { version = "49", default-features = false, features = [

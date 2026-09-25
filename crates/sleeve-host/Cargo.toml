@@ -18,8 +18,11 @@ wasmtime-wasi.workspace = true
 wasmtime-wasi-http.workspace = true
 
 [dev-dependencies]
+file-scenarios = { path = "../../support/file-scenarios" }
 guest-build = { path = "../../support/guest-build" }
 http-scenarios = { path = "../../support/http-scenarios" }
+serde_json.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true
