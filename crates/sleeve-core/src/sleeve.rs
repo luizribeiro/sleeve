@@ -89,12 +89,26 @@ impl Sleeve {
         designators: Vec<Designator<'_>>,
         forward: impl Future<Output = T>,
     ) -> Result<T, DispatchError> {
+        let (call, active) = self.begin_call(interface, function, designators, Vec::new())?;
+        let value = forward.await;
+        self.finish_call(&call, active, ReturnStatus::Ok, Vec::new())?;
+        Ok(value)
+    }
+
+    fn begin_call<'a>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'a>>,
+        handles: Vec<u64>,
+    ) -> Result<(crate::Call<'a>, crate::ActiveCall), DispatchError> {
         let call = crate::Call::new(
             self.next_call.fetch_add(1, Ordering::Relaxed),
             interface,
             function,
         )
-        .with_designators(designators);
+        .with_designators(designators)
+        .with_handles(handles);
         let active = {
             let mut guard = self.try_state()?;
             let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
@@ -105,18 +119,29 @@ impl Sleeve {
                 Start::Trap(trap) => return Err(DispatchError::Trap(trap)),
             }
         };
-        let value = forward.await;
-        {
-            let mut guard = self.try_state()?;
-            let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
-            state.chain.finish_call(
-                &call,
-                active,
-                &Returned::new(call.id, ReturnStatus::Ok),
-                &mut state.handles,
-            );
-        }
-        Ok(value)
+        Ok((call, active))
+    }
+
+    fn finish_call(
+        &self,
+        call: &crate::Call<'_>,
+        active: crate::ActiveCall,
+        status: ReturnStatus,
+        produced: Vec<(u64, &'static str)>,
+    ) -> Result<(), DispatchError> {
+        let handles = produced
+            .into_iter()
+            .map(|(id, resource_type)| crate::ProducedHandle::from_call(id, resource_type, call.id))
+            .collect();
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        state.chain.finish_call(
+            call,
+            active,
+            &Returned::new(call.id, status).with_handles(handles),
+            &mut state.handles,
+        );
+        Ok(())
     }
 
     /// Asks policies to approve and then records a writable channel opening.
