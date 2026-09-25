@@ -4,6 +4,7 @@ members = [
   "crates/*",
   "examples/*",
   "support/benchmark",
+  "support/compose-component",
   "support/guest-build",
   "support/file-scenarios",
   "support/http-scenarios",
