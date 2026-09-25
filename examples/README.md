@@ -6,3 +6,5 @@
   affect HTTP decisions under the tracing information-flow policy.
 - [`file-ifc`](file-ifc/) shows how labeled preopens and file-writer lifetimes
   affect filesystem decisions under the tracing information-flow policy.
+- [`jco`](jco/) runs the HTTP ordering scenarios through the same composed
+  component under Node.
