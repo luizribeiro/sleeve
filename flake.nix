@@ -108,6 +108,18 @@
             // {
               stages = [ "pre-push" ];
             };
+          jco-cross-host =
+            (cargoHook {
+              name = "jco-cross-host-hook";
+              runtimeInputs = [ pkgs.nodejs_24 ];
+              text = ''
+                npm ci --prefix hosts/jco --ignore-scripts --offline
+                cargo test --release -p jco-runner --test cross_host --locked
+              '';
+            })
+            // {
+              stages = [ "pre-push" ];
+            };
         };
         offlineHooks = {
           nixfmt.enable = true;
