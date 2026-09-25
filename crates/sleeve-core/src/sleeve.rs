@@ -1,4 +1,5 @@
 use alloc::{string::String, vec::Vec};
+use core::fmt::Debug;
 use core::future::Future;
 use core::sync::atomic::{AtomicU64, Ordering};
 
@@ -114,6 +115,88 @@ impl Sleeve {
         let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
         state.handles.insert(handle);
         Ok(())
+    }
+
+    /// Runs a synchronous forwarded operation through the policy chain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when the invocation is unavailable or policy
+    /// refuses the operation.
+    pub fn dispatch_sync<T>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'_>>,
+        handles: Vec<u64>,
+        produced: Vec<(u64, &'static str)>,
+        forward: impl FnOnce(u64) -> T,
+    ) -> Result<T, DispatchError> {
+        let (call, active) = self.begin_call(interface, function, designators, handles)?;
+        let value = forward(call.id);
+        self.finish_call(&call, active, ReturnStatus::Ok, produced)?;
+        Ok(value)
+    }
+
+    /// Runs a synchronous fallible operation through the policy chain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when the invocation is unavailable or policy
+    /// refuses the operation. The forwarded error remains inside the outer
+    /// result and is recorded as a normal error return.
+    pub fn dispatch_sync_result<T, E>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'_>>,
+        handles: Vec<u64>,
+        produced: Vec<(u64, &'static str)>,
+        forward: impl FnOnce(u64) -> Result<T, E>,
+    ) -> Result<Result<T, E>, DispatchError>
+    where
+        E: Debug,
+    {
+        let (call, active) = self.begin_call(interface, function, designators, handles)?;
+        let result = forward(call.id);
+        let status = match &result {
+            Ok(_) => ReturnStatus::Ok,
+            Err(error) => ReturnStatus::Error(alloc::format!("{error:?}")),
+        };
+        let returned_handles = if result.is_ok() { produced } else { Vec::new() };
+        self.finish_call(&call, active, status, returned_handles)?;
+        Ok(result)
+    }
+
+    /// Runs an asynchronous fallible operation through the policy chain.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when the invocation is unavailable or policy
+    /// refuses the operation. The forwarded error remains inside the outer
+    /// result and is recorded as a normal error return.
+    pub async fn dispatch_result<T, E, F>(
+        &self,
+        interface: &'static str,
+        function: &'static str,
+        designators: Vec<Designator<'_>>,
+        handles: Vec<u64>,
+        produced: Vec<(u64, &'static str)>,
+        forward: impl FnOnce(u64) -> F,
+    ) -> Result<Result<T, E>, DispatchError>
+    where
+        F: Future<Output = Result<T, E>>,
+        E: Debug,
+    {
+        let (call, active) = self.begin_call(interface, function, designators, handles)?;
+        let result = forward(call.id).await;
+        let status = match &result {
+            Ok(_) => ReturnStatus::Ok,
+            Err(error) => ReturnStatus::Error(alloc::format!("{error:?}")),
+        };
+        let returned_handles = if result.is_ok() { produced } else { Vec::new() };
+        self.finish_call(&call, active, status, returned_handles)?;
+        Ok(result)
     }
 
     fn begin_call<'a>(
@@ -330,7 +413,8 @@ mod tests {
     use core::task::{Context, Poll, Waker};
 
     use crate::{
-        Call, Chain, ChannelKind, Decision, Denied, Metadata, Policy, PolicyState, Returned,
+        Call, Chain, ChannelKind, Decision, Denied, Metadata, Policy, PolicyState, Provenance,
+        Returned,
     };
 
     use super::{DispatchError, Sleeve};
@@ -393,5 +477,35 @@ mod tests {
 
         assert!(sleeve.close_channel(7).is_ok());
         assert!(poll_ready(sleeve.dispatch("test:api/run", "run", Vec::new(), async {})).is_ok());
+    }
+
+    #[test]
+    fn synchronous_dispatch_records_produced_handle_provenance() {
+        let sleeve = Sleeve::new();
+        assert!(
+            sleeve
+                .start(Chain::new().with(RefuseWithOpenChannel), "test".into())
+                .is_ok()
+        );
+        let id = sleeve.next_handle();
+        assert!(
+            sleeve
+                .dispatch_sync(
+                    "test:api/run",
+                    "make",
+                    Vec::new(),
+                    Vec::new(),
+                    alloc::vec![(id, "test:api/item")],
+                    |_| (),
+                )
+                .is_ok()
+        );
+        let state = sleeve.state.try_lock().unwrap();
+        assert_eq!(
+            state
+                .as_ref()
+                .and_then(|state| state.handles.provenance(id)),
+            Some(Provenance::Call(1))
+        );
     }
 }
