@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use sleeve_core::{Call, Chain, Decision, Denied, Metadata, Policy, Returned};
+use sleeve_core::{Call, Chain, Decision, Denied, Metadata, Policy, PolicyState, Returned};
 use sleeve_policy_trace::{AuditLog, Trace};
 
 #[allow(unsafe_code, missing_docs, clippy::same_length_and_capacity)]
@@ -32,7 +32,7 @@ struct Deny;
 impl Policy for Deny {
     type Frame = ();
 
-    fn before(&mut self, _: &Call<'_>) -> Decision<Self::Frame> {
+    fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
         Decision::Deny(Denied::new("notes access denied", ()))
     }
 

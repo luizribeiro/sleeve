@@ -8,8 +8,8 @@ extern crate alloc;
 
 use alloc::{format, string::String, vec::Vec};
 use sleeve_core::{
-    Call, ChannelOpened, Decision, Event, InvocationOutcome, Metadata, Policy, ReturnStatus,
-    Returned,
+    Call, ChannelOpened, Decision, Event, InvocationOutcome, Metadata, Policy, PolicyState,
+    ReturnStatus, Returned,
 };
 
 /// Receives one already-formatted audit record at a time.
@@ -44,7 +44,7 @@ impl<L: AuditLog + 'static> Policy for Trace<L> {
         }
     }
 
-    fn before(&mut self, call: &Call<'_>) -> Decision<Self::Frame> {
+    fn before(&mut self, _: &PolicyState<'_>, call: &Call<'_>) -> Decision<Self::Frame> {
         self.log.log(&format_call(call));
         Decision::Allow(())
     }
@@ -54,7 +54,7 @@ impl<L: AuditLog + 'static> Policy for Trace<L> {
         Vec::new()
     }
 
-    fn before_state_change(&mut self, opened: &ChannelOpened) -> Decision {
+    fn before_state_change(&mut self, _: &PolicyState<'_>, opened: &ChannelOpened) -> Decision {
         self.log.log(&format!(
             "channel opened {} {:?} via call {}",
             opened.handle, opened.kind, opened.call_id
@@ -107,7 +107,9 @@ mod tests {
     extern crate std;
 
     use alloc::{sync::Arc, vec};
-    use sleeve_core::{Chain, Designator, HandleTable, InvocationEnded, InvocationStarted, Start};
+    use sleeve_core::{
+        Chain, Designator, HandleTable, InvocationEnded, InvocationStarted, PolicyState, Start,
+    };
     use std::sync::Mutex;
 
     use super::*;
@@ -128,7 +130,7 @@ mod tests {
         chain.observe(&Event::InvocationStarted(InvocationStarted::new("summary")));
         let call = Call::new(1, "example:notes/notes@0.1.0", "read")
             .with_designators(vec![Designator::new("name", "first")]);
-        let Start::Allowed(active) = chain.start_call(&call) else {
+        let Start::Allowed(active) = chain.start_call(&PolicyState::new(&[]), &call) else {
             unreachable!()
         };
         chain.finish_call(

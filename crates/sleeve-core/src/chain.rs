@@ -2,20 +2,21 @@ use alloc::{boxed::Box, string::ToString, vec::Vec};
 use core::any::Any;
 
 use crate::{
-    Call, ChannelOpened, Decision, Denied, Event, HandleTable, Metadata, Policy, ReturnStatus,
-    Returned, Trap,
+    Call, ChannelOpened, Decision, Denied, Event, HandleTable, Metadata, Policy, PolicyState,
+    ReturnStatus, Returned, Trap,
 };
 
 trait ErasedPolicy {
     fn observe(&mut self, event: &Event<'_>);
-    fn before(&mut self, call: &Call<'_>) -> Decision<Box<dyn Any + Send>>;
+    fn before(&mut self, state: &PolicyState<'_>, call: &Call<'_>)
+    -> Decision<Box<dyn Any + Send>>;
     fn after(
         &mut self,
         call: &Call<'_>,
         frame: Box<dyn Any + Send>,
         returned: &Returned,
     ) -> Vec<Metadata>;
-    fn before_state_change(&mut self, opened: &ChannelOpened) -> Decision;
+    fn before_state_change(&mut self, state: &PolicyState<'_>, opened: &ChannelOpened) -> Decision;
 }
 
 impl<P: Policy> ErasedPolicy for P {
@@ -23,8 +24,12 @@ impl<P: Policy> ErasedPolicy for P {
         Policy::observe(self, event);
     }
 
-    fn before(&mut self, call: &Call<'_>) -> Decision<Box<dyn Any + Send>> {
-        match Policy::before(self, call) {
+    fn before(
+        &mut self,
+        state: &PolicyState<'_>,
+        call: &Call<'_>,
+    ) -> Decision<Box<dyn Any + Send>> {
+        match Policy::before(self, state, call) {
             Decision::Allow(frame) => Decision::Allow(Box::new(frame)),
             Decision::Deny(denied) => Decision::Deny(denied),
             Decision::Trap(trap) => Decision::Trap(trap),
@@ -43,8 +48,8 @@ impl<P: Policy> ErasedPolicy for P {
         Policy::after(self, call, *frame, returned)
     }
 
-    fn before_state_change(&mut self, opened: &ChannelOpened) -> Decision {
-        Policy::before_state_change(self, opened)
+    fn before_state_change(&mut self, state: &PolicyState<'_>, opened: &ChannelOpened) -> Decision {
+        Policy::before_state_change(self, state, opened)
     }
 }
 
@@ -67,12 +72,14 @@ pub enum Start {
 /// Ordered policies compiled into one sleeve variant.
 ///
 /// ```
-/// use sleeve_core::{Call, Chain, Decision, Metadata, Policy, Returned};
+/// use sleeve_core::{Call, Chain, Decision, Metadata, Policy, PolicyState, Returned};
 ///
 /// struct Allow;
 /// impl Policy for Allow {
 ///     type Frame = ();
-///     fn before(&mut self, _: &Call<'_>) -> Decision<()> { Decision::Allow(()) }
+///     fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<()> {
+///         Decision::Allow(())
+///     }
 ///     fn after(&mut self, _: &Call<'_>, (): (), _: &Returned) -> Vec<Metadata> {
 ///         Vec::new()
 ///     }
@@ -110,10 +117,10 @@ impl Chain {
     }
 
     /// Runs before hooks in order and unwinds allowed policies on refusal.
-    pub fn start_call(&mut self, call: &Call<'_>) -> Start {
+    pub fn start_call(&mut self, state: &PolicyState<'_>, call: &Call<'_>) -> Start {
         let mut frames = Vec::with_capacity(self.policies.len());
         for index in 0..self.policies.len() {
-            match self.policies[index].before(call) {
+            match self.policies[index].before(state, call) {
                 Decision::Allow(frame) => frames.push((index, frame)),
                 Decision::Deny(denied) => {
                     let returned = Returned {
@@ -153,9 +160,13 @@ impl Chain {
     }
 
     /// Consults policies before a writable channel is recorded as open.
-    pub fn before_state_change(&mut self, opened: &ChannelOpened) -> Decision {
+    pub fn before_state_change(
+        &mut self,
+        state: &PolicyState<'_>,
+        opened: &ChannelOpened,
+    ) -> Decision {
         for policy in &mut self.policies {
-            match policy.before_state_change(opened) {
+            match policy.before_state_change(state, opened) {
                 Decision::Allow(()) => {}
                 other => return other,
             }
@@ -198,7 +209,7 @@ mod tests {
     impl Policy for Recorder {
         type Frame = &'static str;
 
-        fn before(&mut self, _: &Call<'_>) -> Decision<Self::Frame> {
+        fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
             self.events
                 .lock()
                 .unwrap()
@@ -223,7 +234,7 @@ mod tests {
                 .collect()
         }
 
-        fn before_state_change(&mut self, _: &ChannelOpened) -> Decision {
+        fn before_state_change(&mut self, _: &PolicyState<'_>, _: &ChannelOpened) -> Decision {
             if self.veto {
                 Decision::Deny(Denied::new("closed", 7_u8))
             } else {
@@ -267,7 +278,7 @@ mod tests {
                 decision: allow,
                 veto: false,
             });
-        let Start::Allowed(active) = chain.start_call(&call()) else {
+        let Start::Allowed(active) = chain.start_call(&PolicyState::new(&[]), &call()) else {
             unreachable!()
         };
         let returned = Returned {
@@ -316,7 +327,7 @@ mod tests {
                 decision: allow,
                 veto: false,
             });
-        let Start::Denied(error) = denied.start_call(&call()) else {
+        let Start::Denied(error) = denied.start_call(&PolicyState::new(&[]), &call()) else {
             unreachable!()
         };
         assert_eq!(error.downcast_ref::<u16>(), Some(&9));
@@ -330,7 +341,7 @@ mod tests {
             decision: trap,
             veto: false,
         });
-        let Start::Trap(error) = trapped.start_call(&call()) else {
+        let Start::Trap(error) = trapped.start_call(&PolicyState::new(&[]), &call()) else {
             unreachable!()
         };
         assert_eq!(error.message(), "stop");
@@ -349,7 +360,8 @@ mod tests {
             kind: ChannelKind::Stream,
             call_id: 1,
         };
-        let Decision::Deny(error) = chain.before_state_change(&opened) else {
+        let Decision::Deny(error) = chain.before_state_change(&PolicyState::new(&[]), &opened)
+        else {
             unreachable!()
         };
         assert_eq!(error.downcast_ref::<u8>(), Some(&7));

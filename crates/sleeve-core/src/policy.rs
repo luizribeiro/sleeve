@@ -3,6 +3,25 @@ use core::any::Any;
 
 use crate::{Call, ChannelOpened, Event, Returned};
 
+/// Read-only invocation state available while a policy makes a decision.
+pub struct PolicyState<'a> {
+    open_channels: &'a [ChannelOpened],
+}
+
+impl<'a> PolicyState<'a> {
+    /// Creates a view over the core's current open-channel set.
+    #[must_use]
+    pub const fn new(open_channels: &'a [ChannelOpened]) -> Self {
+        Self { open_channels }
+    }
+
+    /// Iterates over writable channels that can still carry later writes.
+    #[must_use]
+    pub fn open_channels(&self) -> impl ExactSizeIterator<Item = &ChannelOpened> {
+        self.open_channels.iter()
+    }
+}
+
 /// An opaque, typed refusal that a caller can downcast at its WIT boundary.
 pub struct Denied {
     message: String,
@@ -82,14 +101,14 @@ impl Metadata {
 /// Applies one policy to neutral events emitted by a sleeve.
 ///
 /// ```
-/// use sleeve_core::{Call, Decision, Metadata, Policy, Returned};
+/// use sleeve_core::{Call, Decision, Metadata, Policy, PolicyState, Returned};
 ///
 /// struct Allow;
 ///
 /// impl Policy for Allow {
 ///     type Frame = ();
 ///
-///     fn before(&mut self, _: &Call<'_>) -> Decision<Self::Frame> {
+///     fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
 ///         Decision::Allow(())
 ///     }
 ///
@@ -106,7 +125,7 @@ pub trait Policy: Send + 'static {
     fn observe(&mut self, _event: &Event<'_>) {}
 
     /// Allows, denies, or traps a wrapped call before its effect.
-    fn before(&mut self, call: &Call<'_>) -> Decision<Self::Frame>;
+    fn before(&mut self, state: &PolicyState<'_>, call: &Call<'_>) -> Decision<Self::Frame>;
 
     /// Observes the return in reverse chain order and may label produced handles.
     fn after(
@@ -117,7 +136,11 @@ pub trait Policy: Send + 'static {
     ) -> alloc::vec::Vec<Metadata>;
 
     /// Allows, denies, or traps a channel opening before the core records it.
-    fn before_state_change(&mut self, _opened: &ChannelOpened) -> Decision {
+    fn before_state_change(
+        &mut self,
+        _state: &PolicyState<'_>,
+        _opened: &ChannelOpened,
+    ) -> Decision {
         Decision::Allow(())
     }
 }

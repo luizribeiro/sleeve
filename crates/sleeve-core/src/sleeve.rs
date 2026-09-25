@@ -5,13 +5,15 @@ use core::sync::atomic::{AtomicU64, Ordering};
 use spin::{Mutex, MutexGuard};
 
 use crate::{
-    Chain, Designator, Event, HandleTable, InvocationEnded, InvocationOutcome, InvocationStarted,
-    ReturnStatus, Returned, Start,
+    Chain, ChannelClosed, ChannelKind, ChannelOpened, Decision, Designator, Event, HandleDropped,
+    HandleTable, InvocationEnded, InvocationOutcome, InvocationStarted, PolicyState, ReturnStatus,
+    Returned, Start,
 };
 
 struct State {
     chain: Chain,
     handles: HandleTable,
+    open_channels: Vec<ChannelOpened>,
 }
 
 /// Persistent policy and handle state for one component instance.
@@ -44,6 +46,7 @@ impl Sleeve {
         *self.try_state()? = Some(State {
             chain,
             handles: HandleTable::new(),
+            open_channels: Vec::new(),
         });
         Ok(())
     }
@@ -95,7 +98,8 @@ impl Sleeve {
         let active = {
             let mut guard = self.try_state()?;
             let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
-            match state.chain.start_call(&call) {
+            let policy_state = PolicyState::new(&state.open_channels);
+            match state.chain.start_call(&policy_state, &call) {
                 Start::Allowed(active) => active,
                 Start::Denied(denied) => return Err(DispatchError::Denied(denied)),
                 Start::Trap(trap) => return Err(DispatchError::Trap(trap)),
@@ -113,6 +117,69 @@ impl Sleeve {
             );
         }
         Ok(value)
+    }
+
+    /// Asks policies to approve and then records a writable channel opening.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when no invocation has started or a policy
+    /// refuses the state transition.
+    pub fn open_channel(
+        &self,
+        handle: u64,
+        kind: ChannelKind,
+        call_id: u64,
+    ) -> Result<(), DispatchError> {
+        let opened = ChannelOpened::new(handle, kind, call_id);
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        let policy_state = PolicyState::new(&state.open_channels);
+        match state.chain.before_state_change(&policy_state, &opened) {
+            Decision::Allow(()) => {
+                state.open_channels.push(opened);
+                Ok(())
+            }
+            Decision::Deny(denied) => Err(DispatchError::Denied(denied)),
+            Decision::Trap(trap) => Err(DispatchError::Trap(trap)),
+        }
+    }
+
+    /// Records that a writable channel can no longer carry later writes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError::StateBorrowed`] on synchronous re-entry.
+    pub fn close_channel(&self, handle: u64) -> Result<(), DispatchError> {
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        if let Some(index) = state
+            .open_channels
+            .iter()
+            .position(|channel| channel.handle == handle)
+        {
+            state.open_channels.swap_remove(index);
+            state
+                .chain
+                .observe(&Event::ChannelClosed(ChannelClosed::new(handle)));
+        }
+        Ok(())
+    }
+
+    /// Removes a wrapped handle and emits its close and drop observations.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError::StateBorrowed`] on synchronous re-entry.
+    pub fn drop_handle(&self, handle: u64) -> Result<(), DispatchError> {
+        self.close_channel(handle)?;
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        state.handles.remove(handle);
+        state
+            .chain
+            .observe(&Event::HandleDropped(HandleDropped::new(handle)));
+        Ok(())
     }
 
     fn try_state(&self) -> Result<MutexGuard<'_, Option<State>>, DispatchError> {
@@ -195,7 +262,43 @@ macro_rules! export_notes_sleeve {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
+    use alloc::vec::Vec;
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+
+    use crate::{
+        Call, Chain, ChannelKind, Decision, Denied, Metadata, Policy, PolicyState, Returned,
+    };
+
     use super::{DispatchError, Sleeve};
+
+    struct RefuseWithOpenChannel;
+
+    impl Policy for RefuseWithOpenChannel {
+        type Frame = ();
+
+        fn before(&mut self, state: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
+            match state.open_channels().next() {
+                Some(channel) => Decision::Deny(Denied::new("close channel", channel.handle)),
+                None => Decision::Allow(()),
+            }
+        }
+
+        fn after(&mut self, _: &Call<'_>, (): Self::Frame, _: &Returned) -> Vec<Metadata> {
+            Vec::new()
+        }
+    }
+
+    fn poll_ready<T>(future: impl Future<Output = T>) -> T {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(value) => value,
+            Poll::Pending => unreachable!(),
+        }
+    }
 
     #[test]
     fn nested_state_access_returns_an_error() {
@@ -208,5 +311,26 @@ mod tests {
             sleeve.try_state(),
             Err(DispatchError::StateBorrowed)
         ));
+    }
+
+    #[test]
+    fn policy_state_tracks_channels_until_the_core_closes_them() {
+        let sleeve = Sleeve::new();
+        assert!(
+            sleeve
+                .start(Chain::new().with(RefuseWithOpenChannel), "test".into())
+                .is_ok()
+        );
+        assert!(sleeve.open_channel(7, ChannelKind::Stream, 1).is_ok());
+
+        let denied =
+            poll_ready(sleeve.dispatch("test:api/run", "run", Vec::new(), async {})).unwrap_err();
+        let DispatchError::Denied(denied) = denied else {
+            unreachable!()
+        };
+        assert_eq!(denied.downcast_ref::<u64>(), Some(&7));
+
+        assert!(sleeve.close_channel(7).is_ok());
+        assert!(poll_ready(sleeve.dispatch("test:api/run", "run", Vec::new(), async {})).is_ok());
     }
 }

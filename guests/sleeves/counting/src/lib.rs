@@ -6,7 +6,7 @@
 extern crate alloc;
 
 use alloc::{format, vec::Vec};
-use sleeve_core::{Call, Chain, Decision, Metadata, Policy, Returned};
+use sleeve_core::{Call, Chain, Decision, Metadata, Policy, PolicyState, Returned};
 
 #[allow(unsafe_code, missing_docs, clippy::same_length_and_capacity)]
 mod bindings {
@@ -25,7 +25,7 @@ struct Count {
 impl Policy for Count {
     type Frame = ();
 
-    fn before(&mut self, _: &Call<'_>) -> Decision<Self::Frame> {
+    fn before(&mut self, _: &PolicyState<'_>, _: &Call<'_>) -> Decision<Self::Frame> {
         self.calls += 1;
         bindings::sleeve::platform::audit::log(&format!("count {}", self.calls));
         Decision::Allow(())

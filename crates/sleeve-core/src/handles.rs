@@ -53,6 +53,12 @@ impl HandleTable {
             .downcast_ref()
     }
 
+    pub(crate) fn remove(&mut self, id: u64) {
+        if let Some(index) = self.entries.iter().position(|entry| entry.handle.id == id) {
+            self.entries.swap_remove(index);
+        }
+    }
+
     pub(crate) fn attach(&mut self, metadata: Metadata) {
         if let Some(entry) = self
             .entries

@@ -19,5 +19,5 @@ pub use event::{
     ReturnStatus, Returned,
 };
 pub use handles::HandleTable;
-pub use policy::{Decision, Denied, Metadata, Policy, Trap};
+pub use policy::{Decision, Denied, Metadata, Policy, PolicyState, Trap};
 pub use sleeve::{DispatchError, Sleeve};
