@@ -7,7 +7,7 @@ mod composition;
 mod runtime;
 
 pub use composition::{LoadError, compose, sleeve_sha256, verify_composed_routing};
-pub use runtime::{Host, InvocationAttempt, InvocationResult};
+pub use runtime::{Host, HttpHost, InvocationAttempt, InvocationResult};
 
 #[cfg(test)]
 mod tests {

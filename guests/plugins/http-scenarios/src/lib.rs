@@ -71,6 +71,8 @@ async fn fetch_empty(authority: String) -> String {
 
 async fn fetch_body(authority: String, body_size: u32) -> String {
     let headers = Fields::new();
+    let length = body_size.to_string();
+    let _length = headers.append("content-length", length.as_bytes());
     let (mut body, body_reader) = bindings::wit_stream::new();
     let (trailers, trailers_reader) = bindings::wit_future::new(|| Ok(None));
     let (request, result) = Request::new(headers, Some(body_reader), trailers_reader, None);

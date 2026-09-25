@@ -13,9 +13,12 @@ sha2.workspace = true
 wac-graph.workspace = true
 wasmparser.workspace = true
 wasmtime = { workspace = true, features = ["cranelift"] }
+wasmtime-wasi.workspace = true
+wasmtime-wasi-http.workspace = true
 
 [dev-dependencies]
 guest-build = { path = "../../support/guest-build" }
+http-scenarios = { path = "../../support/http-scenarios" }
 tokio.workspace = true
 
 [lints]

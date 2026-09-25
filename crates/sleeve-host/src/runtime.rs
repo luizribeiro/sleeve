@@ -1,14 +1,28 @@
 use std::collections::BTreeMap;
 
-use wasmtime::component::{Accessor, Component, HasData, Linker};
+use wasmtime::component::{Accessor, Component, HasData, Linker, ResourceTable};
 use wasmtime::{Config, Engine, Store};
+use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpCtxView, WasiHttpView};
 
 use crate::compose;
 
 mod bindings {
     wasmtime::component::bindgen!({
-        path: ["../../wit/notes", "../../wit/platform", "wit"],
+        path: ["../../wit/notes", "../../wit/http", "../../wit/platform", "wit"],
         world: "sleeve:host/composed@0.1.0",
+        imports: {
+            "example:notes/notes@0.1.0": async | store,
+            default: trappable,
+        },
+        exports: { default: async | store },
+        require_store_data_send: true,
+    });
+}
+
+mod http_bindings {
+    wasmtime::component::bindgen!({
+        path: ["../../wit/notes", "../../wit/http", "../../wit/platform", "wit"],
+        world: "sleeve:host/http-composed@0.1.0",
         imports: {
             "example:notes/notes@0.1.0": async | store,
             default: trappable,
@@ -23,6 +37,15 @@ pub struct Host {
     engine: Engine,
     notes: BTreeMap<String, String>,
     sleeve_sha256: [u8; 32],
+}
+
+/// Runs HTTP-capable plugins with per-invocation policy settings.
+pub struct HttpHost {
+    engine: Engine,
+    notes: BTreeMap<String, String>,
+    sleeve_sha256: [u8; 32],
+    request_body_limit: u64,
+    allowed_origins: Vec<String>,
 }
 
 /// The plugin's return value and the audit records persisted during its run.
@@ -46,6 +69,10 @@ pub struct InvocationAttempt {
 struct State {
     notes: BTreeMap<String, String>,
     audit: Vec<String>,
+    request_body_limit: u64,
+    allowed_origins: Vec<String>,
+    table: ResourceTable,
+    http: WasiHttpCtx,
 }
 
 struct StateView<'a>(&'a mut State);
@@ -76,6 +103,49 @@ impl bindings::sleeve::platform::audit::Host for StateView<'_> {
     fn log(&mut self, event: String) -> wasmtime::Result<()> {
         self.0.audit.push(event);
         Ok(())
+    }
+}
+
+impl http_bindings::example::notes::notes::Host for StateView<'_> {}
+
+impl http_bindings::example::notes::notes::HostWithStore<State> for StateData {
+    #[allow(clippy::unused_async_trait_impl)]
+    async fn read(store: &Accessor<State, Self>, name: String) -> String {
+        store.with(|mut access| {
+            access
+                .data_mut()
+                .notes
+                .get(&name)
+                .cloned()
+                .unwrap_or_else(|| format!("missing note: {name}"))
+        })
+    }
+}
+
+impl http_bindings::sleeve::platform::audit::Host for StateView<'_> {
+    fn log(&mut self, event: String) -> wasmtime::Result<()> {
+        self.0.audit.push(event);
+        Ok(())
+    }
+}
+
+impl http_bindings::sleeve::platform::settings::Host for StateView<'_> {
+    fn request_body_limit(&mut self) -> wasmtime::Result<u64> {
+        Ok(self.0.request_body_limit)
+    }
+
+    fn allowed_origins(&mut self) -> wasmtime::Result<Vec<String>> {
+        Ok(self.0.allowed_origins.clone())
+    }
+}
+
+impl WasiHttpView for State {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
+            ctx: &mut self.http,
+            table: &mut self.table,
+            hooks: Default::default(),
+        }
     }
 }
 
@@ -162,6 +232,10 @@ impl Host {
             State {
                 notes: self.notes.clone(),
                 audit: Vec::new(),
+                request_body_limit: 0,
+                allowed_origins: Vec::new(),
+                table: ResourceTable::new(),
+                http: WasiHttpCtx::new(),
             },
         );
         let guest = bindings::Composed::instantiate_async(&mut store, &component, &linker)
@@ -181,6 +255,117 @@ impl Host {
             .run_concurrent(async |accessor| {
                 guest
                     .call_summarize(accessor, first.to_owned(), second.to_owned())
+                    .await
+            })
+            .await;
+        let value = match value {
+            Ok(Ok(value)) => {
+                store
+                    .run_concurrent(async |accessor| {
+                        guest
+                            .sleeve_platform_lifecycle()
+                            .call_end(accessor, invocation.to_owned(), false)
+                            .await
+                    })
+                    .await
+                    .map_err(anyhow_message)?
+                    .map_err(anyhow_message)?;
+                Ok(value)
+            }
+            Ok(Err(error)) | Err(error) => Err(error.to_string()),
+        };
+        Ok(InvocationAttempt {
+            value,
+            audit: store.into_data().audit,
+        })
+    }
+}
+
+impl HttpHost {
+    /// Creates an HTTP host with notes, an approved sleeve, and policy settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an engine configuration error when async components are unavailable.
+    pub fn new(
+        notes: impl IntoIterator<Item = (String, String)>,
+        sleeve_sha256: [u8; 32],
+        request_body_limit: u64,
+        allowed_origins: impl IntoIterator<Item = String>,
+    ) -> wasmtime::Result<Self> {
+        let mut config = Config::new();
+        config.wasm_component_model_async(true);
+        config.concurrency_support(true);
+        Ok(Self {
+            engine: Engine::new(&config)?,
+            notes: notes.into_iter().collect(),
+            sleeve_sha256,
+            request_body_limit,
+            allowed_origins: allowed_origins.into_iter().collect(),
+        })
+    }
+
+    /// Runs one shared HTTP scenario while retaining audit records after traps.
+    ///
+    /// # Errors
+    ///
+    /// Returns a load, composition, instantiation, or lifecycle error. A trap
+    /// from the plugin export is returned in [`InvocationAttempt::value`].
+    pub async fn run(
+        &self,
+        plugin: &[u8],
+        sleeve: &[u8],
+        invocation: &str,
+        scenario: u8,
+        authority: &str,
+        body_size: u32,
+    ) -> anyhow::Result<InvocationAttempt> {
+        let bytes = compose(plugin, sleeve, self.sleeve_sha256)?;
+        let component = Component::from_binary(&self.engine, &bytes).map_err(anyhow_message)?;
+        let mut linker = Linker::new(&self.engine);
+        http_bindings::example::notes::notes::add_to_linker::<_, StateData>(&mut linker, |state| {
+            StateView(state)
+        })
+        .map_err(anyhow_message)?;
+        http_bindings::sleeve::platform::audit::add_to_linker::<_, StateData>(
+            &mut linker,
+            |state| StateView(state),
+        )
+        .map_err(anyhow_message)?;
+        http_bindings::sleeve::platform::settings::add_to_linker::<_, StateData>(
+            &mut linker,
+            |state| StateView(state),
+        )
+        .map_err(anyhow_message)?;
+        wasmtime_wasi_http::p3::add_to_linker(&mut linker).map_err(anyhow_message)?;
+        let mut store = Store::new(
+            &self.engine,
+            State {
+                notes: self.notes.clone(),
+                audit: Vec::new(),
+                request_body_limit: self.request_body_limit,
+                allowed_origins: self.allowed_origins.clone(),
+                table: ResourceTable::new(),
+                http: WasiHttpCtx::new(),
+            },
+        );
+        let guest = http_bindings::HttpComposed::instantiate_async(&mut store, &component, &linker)
+            .await
+            .map_err(anyhow_message)?;
+        store
+            .run_concurrent(async |accessor| {
+                guest
+                    .sleeve_platform_lifecycle()
+                    .call_start(accessor, invocation.to_owned())
+                    .await
+            })
+            .await
+            .map_err(anyhow_message)?
+            .map_err(anyhow_message)?;
+        let value = store
+            .run_concurrent(async |accessor| {
+                guest
+                    .call_run(accessor, scenario, authority.to_owned(), body_size)
                     .await
             })
             .await;
