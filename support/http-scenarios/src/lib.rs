@@ -12,8 +12,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 /// Selects the behavior exercised by the shared plugin.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
 #[repr(u8)]
+#[serde(rename_all = "kebab-case")]
 pub enum Scenario {
     /// Reads a secret note before attempting an allowed fetch.
     ReadThenFetch,
@@ -34,7 +35,8 @@ pub enum Scenario {
 }
 
 /// Identifies the rule expected to decide a scenario.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Rule {
     /// Opening a public writable channel at secret is refused.
     ChannelOpenVeto,
@@ -51,7 +53,8 @@ pub enum Rule {
 }
 
 /// Chooses which authority spelling the host passes to the plugin.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Authority {
     /// The exact allowlisted authority.
     Allowed,
@@ -62,21 +65,22 @@ pub enum Authority {
 }
 
 /// Expected result of a scenario invocation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Expected {
     /// The plugin returns this value normally.
-    Returned(&'static str),
+    Returned(String),
     /// Policy denial traps the plugin export.
     Trapped,
 }
 
 /// One reusable plugin scenario and its expected decision.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize)]
 pub struct Case {
     /// Human-readable scenario identifier.
-    pub name: &'static str,
-    /// Plugin behavior to invoke.
-    pub scenario: Scenario,
+    pub name: String,
+    /// Numeric scenario accepted by the plugin export.
+    pub input: u8,
     /// Authority spelling to pass.
     pub authority: Authority,
     /// Request body size in bytes.
@@ -87,73 +91,14 @@ pub struct Case {
     pub rule: Rule,
 }
 
-/// Scenarios exercised under every IFC sleeve variant.
-pub const CASES: &[Case] = &[
-    Case {
-        name: "read-then-fetch",
-        scenario: Scenario::ReadThenFetch,
-        authority: Authority::Allowed,
-        body_size: 0,
-        expected: Expected::Trapped,
-        rule: Rule::ChannelOpenVeto,
-    },
-    Case {
-        name: "fetch-then-read",
-        scenario: Scenario::FetchThenRead,
-        authority: Authority::Allowed,
-        body_size: 0,
-        expected: Expected::Returned("200 classified"),
-        rule: Rule::Allowed,
-    },
-    Case {
-        name: "read-with-open-body",
-        scenario: Scenario::ReadWithOpenBody,
-        authority: Authority::Allowed,
-        body_size: 4,
-        expected: Expected::Trapped,
-        rule: Rule::OpenChannelRaise,
-    },
-    Case {
-        name: "close-body-then-read",
-        scenario: Scenario::CloseBodyThenRead,
-        authority: Authority::Allowed,
-        body_size: 4,
-        expected: Expected::Returned("200 classified"),
-        rule: Rule::Allowed,
-    },
-    Case {
-        name: "body-over-limit",
-        scenario: Scenario::BodyOverLimit,
-        authority: Authority::Allowed,
-        body_size: 9,
-        expected: Expected::Returned("body too large"),
-        rule: Rule::BodyLimit,
-    },
-    Case {
-        name: "blocked-origin",
-        scenario: Scenario::FetchBlockedOrigin,
-        authority: Authority::Blocked,
-        body_size: 0,
-        expected: Expected::Returned("request denied"),
-        rule: Rule::OriginAllowlist,
-    },
-    Case {
-        name: "normalized-origin",
-        scenario: Scenario::FetchNormalizedOrigin,
-        authority: Authority::UppercaseAllowed,
-        body_size: 0,
-        expected: Expected::Returned("200"),
-        rule: Rule::Allowed,
-    },
-    Case {
-        name: "invalid-request-then-read",
-        scenario: Scenario::InvalidRequestThenRead,
-        authority: Authority::Allowed,
-        body_size: 0,
-        expected: Expected::Returned("invalid request classified"),
-        rule: Rule::OriginValidation,
-    },
-];
+/// Reads the scenarios exercised under every IFC sleeve variant and host.
+///
+/// # Errors
+///
+/// Returns an error if the embedded shared scenario data is invalid.
+pub fn cases() -> Result<Vec<Case>, serde_json::Error> {
+    serde_json::from_str(include_str!("../scenarios.json"))
+}
 
 /// A loopback HTTP server used by tests and examples.
 pub struct LocalServer {

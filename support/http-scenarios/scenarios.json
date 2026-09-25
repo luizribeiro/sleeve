@@ -1,0 +1,66 @@
+[
+  {
+    "name": "read-then-fetch",
+    "input": 0,
+    "authority": "allowed",
+    "body_size": 0,
+    "expected": "trapped",
+    "rule": "channel-open-veto"
+  },
+  {
+    "name": "fetch-then-read",
+    "input": 1,
+    "authority": "allowed",
+    "body_size": 0,
+    "expected": { "returned": "200 classified" },
+    "rule": "allowed"
+  },
+  {
+    "name": "read-with-open-body",
+    "input": 2,
+    "authority": "allowed",
+    "body_size": 4,
+    "expected": "trapped",
+    "rule": "open-channel-raise"
+  },
+  {
+    "name": "close-body-then-read",
+    "input": 3,
+    "authority": "allowed",
+    "body_size": 4,
+    "expected": { "returned": "200 classified" },
+    "rule": "allowed"
+  },
+  {
+    "name": "body-over-limit",
+    "input": 4,
+    "authority": "allowed",
+    "body_size": 9,
+    "expected": { "returned": "body too large" },
+    "rule": "body-limit"
+  },
+  {
+    "name": "blocked-origin",
+    "input": 5,
+    "authority": "blocked",
+    "body_size": 0,
+    "expected": { "returned": "request denied" },
+    "rule": "origin-allowlist"
+  },
+  {
+    "name": "normalized-origin",
+    "input": 6,
+    "authority": "uppercase-allowed",
+    "body_size": 0,
+    "expected": { "returned": "200" },
+    "rule": "allowed"
+  },
+  {
+    "name": "invalid-request-then-read",
+    "input": 7,
+    "authority": "allowed",
+    "body_size": 0,
+    "expected": { "returned": "invalid request classified" },
+    "rule": "origin-validation"
+  }
+]

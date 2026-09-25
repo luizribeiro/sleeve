@@ -1,6 +1,6 @@
 //! End-to-end HTTP decisions through both IFC policy chains.
 
-use http_scenarios::{Authority, CASES, Expected, LocalServer};
+use http_scenarios::{Authority, Expected, LocalServer, cases};
 use sleeve_host::{HttpHost, sleeve_sha256};
 
 #[tokio::test]
@@ -21,7 +21,7 @@ async fn applies_each_http_decision_under_both_policy_chains() {
         )
         .unwrap();
 
-        for case in CASES {
+        for case in cases().unwrap() {
             let authority = match case.authority {
                 Authority::Allowed => server.authority().to_owned(),
                 Authority::Blocked => server.blocked_authority(),
@@ -33,17 +33,17 @@ async fn applies_each_http_decision_under_both_policy_chains() {
                     &plugin,
                     &sleeve,
                     &invocation,
-                    case.scenario as u8,
+                    case.input,
                     &authority,
                     case.body_size,
                 )
                 .await
                 .unwrap();
             server.check().unwrap();
-            match case.expected {
+            match &case.expected {
                 Expected::Returned(expected) => assert_eq!(
                     attempt.value.as_deref(),
-                    Ok(expected),
+                    Ok(expected.as_str()),
                     "{variant} {}",
                     case.name
                 ),
@@ -55,7 +55,7 @@ async fn applies_each_http_decision_under_both_policy_chains() {
             }
             if variant == "trace-ifc"
                 && matches!(
-                    case.name,
+                    case.name.as_str(),
                     "read-then-fetch" | "read-with-open-body" | "blocked-origin"
                 )
             {
