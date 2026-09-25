@@ -1,7 +1,9 @@
-use alloc::{string::String, vec::Vec};
+use alloc::{boxed::Box, collections::VecDeque, string::String, vec::Vec};
 use core::fmt::Debug;
 use core::future::Future;
+use core::pin::Pin;
 use core::sync::atomic::{AtomicU64, Ordering};
+use core::task::{Context, Poll, Waker};
 
 use spin::{Mutex, MutexGuard};
 
@@ -15,7 +17,14 @@ struct State {
     chain: Chain,
     handles: HandleTable,
     open_channels: Vec<ChannelOpened>,
+    relays: VecDeque<RelayFuture>,
+    relay_waker: Option<Waker>,
+    stopping_relays: bool,
 }
+
+/// A channel relay owned by the invocation anchor.
+#[doc(hidden)]
+pub type RelayFuture = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 /// Persistent policy and handle state for one component instance.
 pub struct Sleeve {
@@ -51,6 +60,9 @@ impl Sleeve {
             chain,
             handles: HandleTable::new(),
             open_channels: Vec::new(),
+            relays: VecDeque::new(),
+            relay_waker: None,
+            stopping_relays: false,
         });
         Ok(())
     }
@@ -307,6 +319,74 @@ impl Sleeve {
         Ok(())
     }
 
+    /// Hands a relay to the invocation-long anchor task.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when no invocation is active, shutdown has
+    /// started, or policy state is synchronously borrowed.
+    pub fn enqueue_relay(
+        &self,
+        relay: impl Future<Output = ()> + Send + 'static,
+    ) -> Result<(), DispatchError> {
+        let mut guard = self.try_state()?;
+        let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+        if state.stopping_relays {
+            return Err(DispatchError::RelaysStopped);
+        }
+        state.relays.push_back(Box::pin(relay));
+        if let Some(waker) = state.relay_waker.take() {
+            waker.wake();
+        }
+        Ok(())
+    }
+
+    /// Waits without spinning until a relay is ready or shutdown begins.
+    pub async fn next_relay(&self) -> Option<RelayFuture> {
+        core::future::poll_fn(|context| self.poll_relay(context)).await
+    }
+
+    /// Stops accepting relays and wakes the idle anchor.
+    ///
+    /// Queued relays are dropped immediately; running relay tasks are cancelled
+    /// when the anchor export returns.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DispatchError`] when no invocation is active or policy state
+    /// is synchronously borrowed.
+    pub fn stop_relays(&self) -> Result<(), DispatchError> {
+        let queued = {
+            let mut guard = self.try_state()?;
+            let state = guard.as_mut().ok_or(DispatchError::NotStarted)?;
+            state.stopping_relays = true;
+            if let Some(waker) = state.relay_waker.take() {
+                waker.wake();
+            }
+            core::mem::take(&mut state.relays)
+        };
+        drop(queued);
+        Ok(())
+    }
+
+    fn poll_relay(&self, context: &mut Context<'_>) -> Poll<Option<RelayFuture>> {
+        let Ok(mut guard) = self.try_state() else {
+            context.waker().wake_by_ref();
+            return Poll::Pending;
+        };
+        let Some(state) = guard.as_mut() else {
+            return Poll::Ready(None);
+        };
+        if let Some(relay) = state.relays.pop_front() {
+            Poll::Ready(Some(relay))
+        } else if state.stopping_relays {
+            Poll::Ready(None)
+        } else {
+            state.relay_waker = Some(context.waker().clone());
+            Poll::Pending
+        }
+    }
+
     /// Removes a wrapped handle and emits its close and drop observations.
     ///
     /// # Errors
@@ -344,6 +424,8 @@ pub enum DispatchError {
     Trap(crate::Trap),
     /// Policy code re-entered the sleeve while its state was borrowed.
     StateBorrowed,
+    /// The invocation anchor is already stopping.
+    RelaysStopped,
 }
 
 impl DispatchError {
