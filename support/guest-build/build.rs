@@ -57,7 +57,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "WASIP2_PASSTHROUGH_SLEEVE_COMPONENT",
         &wasip2_target_dir.join("wasm32-wasip2/release/passthrough_sleeve.wasm"),
     );
-    println!("cargo::rerun-if-changed={}", guest_dir.display());
+    for path in [
+        guest_dir.as_path(),
+        &repository.join("crates/sleeve-core"),
+        &repository.join("support/policies"),
+        &repository.join("wit"),
+    ] {
+        println!("cargo::rerun-if-changed={}", path.display());
+    }
     Ok(())
 }
 
