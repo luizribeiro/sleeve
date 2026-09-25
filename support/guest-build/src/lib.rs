@@ -35,6 +35,18 @@ pub fn filesystem_bypass() -> &'static Path {
     Path::new(env!("FILESYSTEM_BYPASS_COMPONENT"))
 }
 
+/// Returns the policy-free filesystem resource forwarder.
+#[must_use]
+pub fn filesystem_forwarder() -> &'static Path {
+    Path::new(env!("FILESYSTEM_FORWARDER_COMPONENT"))
+}
+
+/// Returns the plugin that reads through the minimal filesystem interface.
+#[must_use]
+pub fn filesystem_reader() -> &'static Path {
+    Path::new(env!("FILESYSTEM_READER_COMPONENT"))
+}
+
 /// Returns the plugin generated from Wasmtime's upstream p3 filesystem WIT.
 #[must_use]
 pub fn filesystem_upstream() -> &'static Path {

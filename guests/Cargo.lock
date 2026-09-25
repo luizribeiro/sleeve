@@ -76,6 +76,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "filesystem-forwarder"
+version = "0.0.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
+name = "filesystem-reader"
+version = "0.0.0"
+dependencies = [
+ "wit-bindgen",
+]
+
+[[package]]
 name = "filesystem-upstream"
 version = "0.0.0"
 dependencies = [

@@ -39,6 +39,28 @@ fn standalone_streams_work_under_jco() {
     assert_success(&run_jco("writeThenRead"), "classified");
 }
 
+#[tokio::test]
+async fn composed_resource_forwarding_works_under_wasmtime() {
+    let fixture = Fixture::new();
+    let bytes = composed_reader();
+    assert_eq!(
+        run_wasmtime_bytes(&bytes, "run", &fixture).await,
+        "classified"
+    );
+}
+
+#[test]
+fn composed_resource_forwarding_works_under_jco() {
+    let fixture = Fixture::new();
+    let plugin = std::fs::read(guest_build::filesystem_reader()).unwrap();
+    let forwarder = std::fs::read(guest_build::filesystem_forwarder()).unwrap();
+    let attempt = Component::transpile(&plugin, &forwarder)
+        .unwrap()
+        .run_standalone_filesystem("run", &fixture.public, &fixture.secret)
+        .unwrap();
+    assert_success(&attempt, "classified");
+}
+
 async fn run_wasmtime(export: &str, fixture: &Fixture) -> String {
     let bytes = std::fs::read(guest_build::filesystem_upstream()).unwrap();
     run_wasmtime_bytes(&bytes, export, fixture).await
@@ -79,6 +101,12 @@ async fn run_wasmtime_bytes(bytes: &[u8], export: &str, fixture: &Fixture) -> St
         .unwrap()
         .unwrap()
         .0
+}
+
+fn composed_reader() -> Vec<u8> {
+    let plugin = std::fs::read(guest_build::filesystem_reader()).unwrap();
+    let forwarder = std::fs::read(guest_build::filesystem_forwarder()).unwrap();
+    sleeve_host::compose(&plugin, &forwarder, sleeve_host::sleeve_sha256(&forwarder)).unwrap()
 }
 
 fn run_jco(export: &str) -> Attempt {

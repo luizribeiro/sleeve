@@ -12,6 +12,8 @@ const GUESTS: &[(&str, &str)] = &[
     ("DENY_SLEEVE_COMPONENT", "deny-sleeve"),
     ("DIRECT_IMPORT_COMPONENT", "direct-import"),
     ("FILESYSTEM_BYPASS_COMPONENT", "filesystem-bypass"),
+    ("FILESYSTEM_FORWARDER_COMPONENT", "filesystem-forwarder"),
+    ("FILESYSTEM_READER_COMPONENT", "filesystem-reader"),
     ("FILESYSTEM_UPSTREAM_COMPONENT", "filesystem-upstream"),
     ("FILE_SCENARIOS_COMPONENT", "file-scenarios-plugin"),
     ("FILE_IFC_SLEEVE_COMPONENT", "file-ifc-sleeve"),

@@ -1,0 +1,8 @@
+package example:filesystem-forwarder@0.1.0;
+
+world forwarder {
+  import wasi:filesystem/types@0.3.0;
+  import wasi:filesystem/preopens@0.3.0;
+  export wasi:filesystem/types@0.3.0;
+  export wasi:filesystem/preopens@0.3.0;
+}
