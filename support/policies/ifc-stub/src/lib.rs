@@ -132,6 +132,14 @@ impl Ifc {
             .and_then(|handle| state.metadata::<FileLabel>(*handle))
             .copied()
     }
+
+    fn write_allowed(&self, label: Label) -> Decision<Frame> {
+        if self.current == Label::Secret && label == Label::Public {
+            Decision::Deny(Self::denial(Refusal::SecretToPublic))
+        } else {
+            Decision::Allow(Frame::None)
+        }
+    }
 }
 
 impl Policy for Ifc {
@@ -168,17 +176,35 @@ impl Policy for Ifc {
                 return Self::refuse(Refusal::UnknownPreopenLabel);
             };
             return match call.function.as_ref() {
-                "[method]descriptor.open-at" => match self.raise(state, label) {
-                    Decision::Allow(_) => {
-                        Decision::Allow(Frame::Derived(Some(FileLabel::Known(label))))
+                "[method]descriptor.open-at" => {
+                    let writing = call
+                        .designators
+                        .iter()
+                        .any(|designator| designator.key == "write" && designator.value == "true");
+                    if writing {
+                        match self.write_allowed(label) {
+                            Decision::Allow(_) => {
+                                Decision::Allow(Frame::Derived(Some(FileLabel::Known(label))))
+                            }
+                            Decision::Deny(denied) => Decision::Deny(denied),
+                            Decision::Trap(trap) => Decision::Trap(trap),
+                            _ => Decision::Trap(Trap::new("unsupported policy decision")),
+                        }
+                    } else {
+                        match self.raise(state, label) {
+                            Decision::Allow(_) => {
+                                Decision::Allow(Frame::Derived(Some(FileLabel::Known(label))))
+                            }
+                            Decision::Deny(denied) => Decision::Deny(denied),
+                            Decision::Trap(trap) => Decision::Trap(trap),
+                            _ => Decision::Trap(Trap::new("unsupported policy decision")),
+                        }
                     }
-                    Decision::Deny(denied) => Decision::Deny(denied),
-                    Decision::Trap(trap) => Decision::Trap(trap),
-                    _ => Decision::Trap(Trap::new("unsupported policy decision")),
-                },
+                }
                 "[method]descriptor.stat" | "[method]descriptor.read-via-stream" => {
                     self.raise(state, label)
                 }
+                "[method]descriptor.write-via-stream" => self.write_allowed(label),
                 _ => Decision::Allow(Frame::None),
             };
         }
@@ -203,11 +229,17 @@ impl Policy for Ifc {
         }
     }
 
-    fn before_state_change(&mut self, _: &PolicyState<'_>, _: &ChannelOpened) -> Decision {
-        if self.current == Label::Secret {
-            Self::refuse(Refusal::ChannelAtSecret)
-        } else {
-            Decision::Allow(())
+    fn before_state_change(&mut self, state: &PolicyState<'_>, opened: &ChannelOpened) -> Decision {
+        let sink = opened
+            .sink
+            .and_then(|handle| state.metadata::<FileLabel>(handle));
+        match sink {
+            Some(FileLabel::Known(Label::Secret)) => Decision::Allow(()),
+            Some(FileLabel::Known(Label::Public)) | None if self.current == Label::Public => {
+                Decision::Allow(())
+            }
+            Some(FileLabel::Known(Label::Public)) | None => Self::refuse(Refusal::ChannelAtSecret),
+            Some(FileLabel::Unknown) => Self::refuse(Refusal::UnknownPreopenLabel),
         }
     }
 }
@@ -292,6 +324,21 @@ mod tests {
             Vec::new(),
             vec![handle],
             Vec::new(),
+            |_| async { Ok(()) },
+        ))
+    }
+
+    fn open_for_write(
+        sleeve: &Sleeve,
+        parent: u64,
+        produced: u64,
+    ) -> Result<Result<(), ()>, DispatchError> {
+        poll_ready(sleeve.dispatch_result_derived(
+            FILESYSTEM_TYPES,
+            "[method]descriptor.open-at",
+            vec![Designator::new("write", "true")],
+            vec![parent],
+            (produced, "descriptor", parent),
             |_| async { Ok(()) },
         ))
     }
@@ -381,6 +428,42 @@ mod tests {
     }
 
     #[test]
+    fn secret_reads_allow_secret_writes_and_refuse_public_writes() {
+        let sleeve = filesystem_sleeve();
+        assert!(file_call(&sleeve, "[method]descriptor.stat", 2).is_ok());
+        assert!(open_for_write(&sleeve, 2, 3).is_ok());
+        let error = open_for_write(&sleeve, 1, 4).unwrap_err();
+        let DispatchError::Denied(denied) = error else {
+            panic!("expected a policy refusal")
+        };
+        assert_eq!(
+            denied.downcast_ref::<Refusal>(),
+            Some(&Refusal::SecretToPublic)
+        );
+    }
+
+    #[test]
+    fn secret_state_only_opens_writers_to_secret_containers() {
+        let sleeve = filesystem_sleeve();
+        assert!(file_call(&sleeve, "[method]descriptor.stat", 2).is_ok());
+        let error = sleeve
+            .open_channel_to(9, ChannelKind::Stream, 2, 1)
+            .unwrap_err();
+        let DispatchError::Denied(denied) = error else {
+            panic!("expected a policy refusal")
+        };
+        assert_eq!(
+            denied.downcast_ref::<Refusal>(),
+            Some(&Refusal::ChannelAtSecret)
+        );
+        assert!(
+            sleeve
+                .open_channel_to(10, ChannelKind::Stream, 3, 2)
+                .is_ok()
+        );
+    }
+
+    #[test]
     fn unknown_preopen_label_refuses_every_descriptor_call() {
         for function in [
             "[method]descriptor.stat",
@@ -397,5 +480,15 @@ mod tests {
                 Some(&Refusal::UnknownPreopenLabel)
             );
         }
+
+        let sleeve = filesystem_sleeve_with_first_label("internal");
+        let error = open_for_write(&sleeve, 1, 3).unwrap_err();
+        let DispatchError::Denied(denied) = error else {
+            panic!("expected a policy refusal")
+        };
+        assert_eq!(
+            denied.downcast_ref::<Refusal>(),
+            Some(&Refusal::UnknownPreopenLabel)
+        );
     }
 }
