@@ -79,6 +79,30 @@ struct StateView<'a>(&'a mut State);
 
 struct StateData;
 
+macro_rules! run_anchored {
+    ($store:expr, $guest:expr, |$accessor:ident| $call:expr) => {
+        $store
+            .run_concurrent(async |$accessor| {
+                let anchor = $guest.sleeve_platform_anchor().call_run($accessor);
+                let invocation = async {
+                    let value = $call.await;
+                    let stopped = $guest.sleeve_platform_anchor().call_stop($accessor).await;
+                    match value {
+                        Err(error) => Err(error),
+                        Ok(value) => {
+                            stopped?;
+                            Ok(value)
+                        }
+                    }
+                };
+                let (anchor, value) = tokio::join!(anchor, invocation);
+                anchor?;
+                value
+            })
+            .await
+    };
+}
+
 impl HasData for StateData {
     type Data<'a> = StateView<'a>;
 }
@@ -251,13 +275,11 @@ impl Host {
             .await
             .map_err(anyhow_message)?
             .map_err(anyhow_message)?;
-        let value = store
-            .run_concurrent(async |accessor| {
-                guest
-                    .call_summarize(accessor, first.to_owned(), second.to_owned())
-                    .await
-            })
-            .await;
+        let value = run_anchored!(store, guest, |accessor| guest.call_summarize(
+            accessor,
+            first.to_owned(),
+            second.to_owned()
+        ));
         let value = match value {
             Ok(Ok(value)) => {
                 store
@@ -362,13 +384,12 @@ impl HttpHost {
             .await
             .map_err(anyhow_message)?
             .map_err(anyhow_message)?;
-        let value = store
-            .run_concurrent(async |accessor| {
-                guest
-                    .call_run(accessor, scenario, authority.to_owned(), body_size)
-                    .await
-            })
-            .await;
+        let value = run_anchored!(store, guest, |accessor| guest.call_run(
+            accessor,
+            scenario,
+            authority.to_owned(),
+            body_size
+        ));
         let value = match value {
             Ok(Ok(value)) => {
                 store

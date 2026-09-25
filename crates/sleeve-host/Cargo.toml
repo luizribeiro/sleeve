@@ -10,6 +10,7 @@ version.workspace = true
 [dependencies]
 anyhow.workspace = true
 sha2.workspace = true
+tokio.workspace = true
 wac-graph.workspace = true
 wasmparser.workspace = true
 wasmtime = { workspace = true, features = ["cranelift"] }
@@ -19,7 +20,6 @@ wasmtime-wasi-http.workspace = true
 [dev-dependencies]
 guest-build = { path = "../../support/guest-build" }
 http-scenarios = { path = "../../support/http-scenarios" }
-tokio.workspace = true
 
 [lints]
 workspace = true

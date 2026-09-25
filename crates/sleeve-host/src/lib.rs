@@ -226,7 +226,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(attempt.value.is_err());
+        let trap = attempt.value.unwrap_err();
+        assert!(
+            trap.contains("trap_after_read.wasm"),
+            "unexpected trap: {trap}"
+        );
         assert_eq!(
             attempt.audit,
             [

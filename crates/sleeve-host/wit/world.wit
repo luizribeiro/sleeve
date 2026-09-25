@@ -4,6 +4,7 @@ world composed {
   import example:notes/notes@0.1.0;
   import sleeve:platform/audit@0.1.0;
   export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
   export summarize: async func(first: string, second: string) -> string;
 }
 
@@ -14,5 +15,6 @@ world http-composed {
   import sleeve:platform/audit@0.1.0;
   import sleeve:platform/settings@0.1.0;
   export sleeve:platform/lifecycle@0.1.0;
+  export sleeve:platform/anchor@0.1.0;
   export run: async func(scenario: u8, authority: string, body-size: u32) -> string;
 }
