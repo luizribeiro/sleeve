@@ -670,6 +670,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-ifc"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "guest-build",
+ "http-scenarios",
+ "sleeve-host",
+ "tokio",
+]
+
+[[package]]
 name = "http-scenarios"
 version = "0.0.0"
 
