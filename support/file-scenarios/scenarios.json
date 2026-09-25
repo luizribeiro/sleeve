@@ -1,0 +1,56 @@
+[
+  {
+    "name": "open-public-then-read-secret",
+    "input": 0,
+    "expected": "read refused",
+    "policy_denial": true
+  },
+  {
+    "name": "close-public-then-read-secret",
+    "input": 1,
+    "expected": "classified",
+    "policy_denial": false
+  },
+  {
+    "name": "read-secret-then-write-secret",
+    "input": 2,
+    "expected": "secret write allowed",
+    "policy_denial": false
+  },
+  {
+    "name": "read-secret-then-write-public",
+    "input": 3,
+    "expected": "write refused",
+    "policy_denial": true
+  },
+  {
+    "name": "parent-escape",
+    "input": 4,
+    "expected": "escape refused",
+    "policy_denial": false
+  },
+  {
+    "name": "absolute-escape",
+    "input": 5,
+    "expected": "escape refused",
+    "policy_denial": false
+  },
+  {
+    "name": "cross-preopen-symlink",
+    "input": 6,
+    "expected": "escape refused",
+    "policy_denial": false
+  },
+  {
+    "name": "truncate-only-after-secret",
+    "input": 7,
+    "expected": "write refused",
+    "policy_denial": true
+  },
+  {
+    "name": "write-only-after-secret",
+    "input": 8,
+    "expected": "write refused",
+    "policy_denial": true
+  }
+]

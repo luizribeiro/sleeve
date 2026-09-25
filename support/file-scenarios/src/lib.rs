@@ -28,72 +28,23 @@ pub enum Scenario {
 }
 
 /// Expected result of a filesystem scenario.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Deserialize)]
 pub struct Case {
     /// Human-readable scenario identifier.
-    pub name: &'static str,
-    /// Plugin behavior to invoke.
-    pub scenario: Scenario,
+    pub name: String,
+    /// Numeric scenario accepted by the plugin export.
+    pub input: u8,
     /// Expected plugin return value.
-    pub expected: &'static str,
+    pub expected: String,
     /// Whether the trace must contain a policy denial.
     pub policy_denial: bool,
 }
 
-/// Scenarios exercised under every IFC sleeve variant.
-pub const CASES: &[Case] = &[
-    Case {
-        name: "open-public-then-read-secret",
-        scenario: Scenario::OpenPublicThenReadSecret,
-        expected: "read refused",
-        policy_denial: true,
-    },
-    Case {
-        name: "close-public-then-read-secret",
-        scenario: Scenario::ClosePublicThenReadSecret,
-        expected: "classified",
-        policy_denial: false,
-    },
-    Case {
-        name: "read-secret-then-write-secret",
-        scenario: Scenario::ReadSecretThenWriteSecret,
-        expected: "secret write allowed",
-        policy_denial: false,
-    },
-    Case {
-        name: "read-secret-then-write-public",
-        scenario: Scenario::ReadSecretThenWritePublic,
-        expected: "write refused",
-        policy_denial: true,
-    },
-    Case {
-        name: "parent-escape",
-        scenario: Scenario::ParentEscape,
-        expected: "escape refused",
-        policy_denial: false,
-    },
-    Case {
-        name: "absolute-escape",
-        scenario: Scenario::AbsoluteEscape,
-        expected: "escape refused",
-        policy_denial: false,
-    },
-    Case {
-        name: "cross-preopen-symlink",
-        scenario: Scenario::CrossPreopenSymlink,
-        expected: "escape refused",
-        policy_denial: false,
-    },
-    Case {
-        name: "truncate-only-after-secret",
-        scenario: Scenario::TruncateOnlyAfterSecret,
-        expected: "write refused",
-        policy_denial: true,
-    },
-    Case {
-        name: "write-only-after-secret",
-        scenario: Scenario::WriteOnlyAfterSecret,
-        expected: "write refused",
-        policy_denial: true,
-    },
-];
+/// Reads the scenarios exercised under every IFC sleeve variant and host.
+///
+/// # Errors
+///
+/// Returns an error if the embedded shared scenario data is invalid.
+pub fn cases() -> Result<Vec<Case>, serde_json::Error> {
+    serde_json::from_str(include_str!("../scenarios.json"))
+}

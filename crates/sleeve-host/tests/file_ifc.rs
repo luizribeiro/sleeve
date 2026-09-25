@@ -1,6 +1,6 @@
 //! End-to-end filesystem decisions through both IFC policy chains.
 
-use file_scenarios::CASES;
+use file_scenarios::cases;
 use sleeve_host::{FileHost, FilePreopen, LoadError, compose, sleeve_sha256};
 
 #[tokio::test]
@@ -30,19 +30,19 @@ async fn applies_each_file_decision_under_both_policy_chains() {
         )
         .unwrap();
 
-        for case in CASES {
+        for case in cases().unwrap() {
             let attempt = host
                 .run(
                     &plugin,
                     &sleeve,
                     &format!("{variant}-{}", case.name),
-                    case.scenario as u8,
+                    case.input,
                 )
                 .await
                 .unwrap();
             assert_eq!(
                 attempt.value.as_deref(),
-                Ok(case.expected),
+                Ok(case.expected.as_str()),
                 "{variant} {}: {:?}",
                 case.name,
                 attempt.audit
