@@ -127,7 +127,6 @@ fn accepts_scheduler_local_drop_timing() {
 }
 
 #[tokio::test]
-#[ignore = "jco 1.35.0: RuntimeError: wasm trap: deadlock detected: event loop cannot make further progress"]
 async fn plugin_trap_rejects_export_while_anchor_is_pending() {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let scenarios = repository.join("support/http-scenarios/scenarios.json");

@@ -13,6 +13,9 @@ export async function invoke(componentPath, invocation, call) {
   const component = await import(pathToFileURL(componentPath));
   component.lifecycle.start(invocation);
   const anchor = component.anchor.run();
+  // A plugin trap also rejects the pending anchor. Handling that rejection
+  // here keeps Node from reporting it as uncaught before the plugin's error.
+  anchor.catch(() => {});
   let outcome;
   try {
     const value = await call(component);
