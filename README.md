@@ -52,10 +52,11 @@ and host source; an independently composed trace policy works but adds another
 component call, measuring 3,561 ns versus 2,361 ns for compiled-in tracing.
 
 The same buffered HTTP components agree under Wasmtime and jco 1.35. The
-invocation-long relay used for filesystem streams does not: jco cannot advance a
-second concurrent async export while the first awaits it. This makes sleeves a
-useful Wasmtime-side complement to host middleware today, not a portable primary
-replacement.
+invocation-long relay used for filesystem streams does not: jco 1.35 has a
+handle-table bug that breaks it ([jco #2182](https://github.com/bytecodealliance/jco/issues/2182)),
+fixed by [jco PR #2183](https://github.com/bytecodealliance/jco/pull/2183), which
+isn't merged yet. Until that fix ships, this makes sleeves a useful Wasmtime-side
+complement to host middleware, not a portable primary replacement.
 
 Reproduce the timings with `cargo run --release -p sleeve-benchmark` and the
 line counts with `support/count-wrapper-lines.sh`.
