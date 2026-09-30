@@ -27,6 +27,8 @@ impl bindings::Guest for Component {
         reader.await
     }
 
+    // The returned future only exists so the world has a `future<u32>`, which
+    // makes wit-bindgen generate the `wit_future` constructor `run` uses.
     async fn helper() -> wit_bindgen::FutureReader<u32> {
         let writer = loop {
             if let Some(writer) = SIGNAL.lock().take() {
@@ -35,9 +37,8 @@ impl bindings::Guest for Component {
             wit_bindgen::yield_async().await;
         };
         let _written = writer.write(7).await;
-        let (completed, reader) = bindings::wit_future::new(|| 0_u32);
-        let _written = completed.write(0).await;
-        reader
+        let (_, unused) = bindings::wit_future::new(|| 0_u32);
+        unused
     }
 }
 
